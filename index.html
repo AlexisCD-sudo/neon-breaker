@@ -17,7 +17,7 @@ body{display:block;position:fixed;inset:0}
 .stats span{color:#fff}
 .stats b{color:#4cf3ff;margin-left:3px;text-shadow:0 0 6px #35eaff}
 .stats b.frenzy{color:#ff39d4;text-shadow:0 0 10px #ff39d4}
-#game{position:absolute;top:var(--hud-h);left:0;width:100%;height:calc(100% - var(--hud-h));display:block;touch-action:none;cursor:crosshair}
+#game{position:absolute;top:var(--hud-h);left:50%;transform:translateX(-50%);height:calc(100% - var(--hud-h));display:block;touch-action:none;cursor:crosshair;background:#050510}
 #overlay{position:absolute;inset:0;display:grid;place-items:center;background:radial-gradient(ellipse at center,rgba(14,13,45,.82),rgba(2,2,12,.94));text-align:center;padding:20px;z-index:10;overflow-y:auto}
 .panel{max-width:560px;width:100%;padding:clamp(18px,3vw,34px);border:1px solid rgba(70,235,255,.45);border-radius:18px;background:rgba(6,10,30,.88);box-shadow:0 0 35px #0bd4ff33,inset 0 0 25px #a22cff18;margin:auto}
 h1{margin:0 0 6px;font-size:clamp(26px,5.5vw,56px);letter-spacing:.12em;line-height:1;color:#fff;text-shadow:0 0 8px #fff,0 0 22px #08dfff,0 0 42px #a42cff}
@@ -31,8 +31,6 @@ button.ghost:hover{background:rgba(54,234,255,.1)}
 .small{font-size:10px;color:#8298b7;margin-top:10px;line-height:1.6}
 .hidden{display:none!important}
 .buttons{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
-
-/* Rècords */
 .rec-sub{color:#9befff;letter-spacing:.15em;font-size:10px;margin-bottom:14px}
 .rec-list{list-style:none;padding:0;margin:0 0 8px;text-align:left}
 .rec-list li{display:grid;grid-template-columns:28px 1fr auto;gap:10px;align-items:center;padding:8px 12px;margin-bottom:6px;background:rgba(20,30,60,.6);border:1px solid rgba(53,234,255,.2);border-radius:10px;font-size:13px}
@@ -48,7 +46,6 @@ button.ghost:hover{background:rgba(54,234,255,.1)}
 .rec-name-row input:focus{border-color:#4cf3ff;box-shadow:0 0 12px #35eaff66}
 .rec-name-row input::placeholder{color:#5a7090}
 .rec-badge{display:inline-block;padding:3px 10px;border-radius:999px;background:linear-gradient(90deg,#40f4ff,#f24bdb);color:#04101a;font-weight:900;font-size:10px;letter-spacing:.1em;margin-bottom:10px}
-
 @media(max-width:700px){:root{--hud-h:42px}.brand{letter-spacing:.06em;font-size:9px}.stats{gap:5px;font-size:7.5px}.sound{font-size:8px;padding:4px 8px;top:calc(var(--hud-h) + 4px)}.panel{padding:18px}p{font-size:12px}.rec-list li{font-size:12px;padding:7px 10px}}
 @media (orientation:landscape) and (max-height:600px){
   :root{--hud-h:30px}
@@ -92,8 +89,6 @@ button.ghost:hover{background:rgba(54,234,255,.1)}
     </div>
     <div class="small">MÒBIL: ARROSSEGA EL DIT · TOCA PER DISPARAR LÀSER<br>ESCRIPTORI: RATOLÍ / ← → · ESPAI O F PER DISPARAR · P PER PAUSAR</div>
   </div>
-
-  <!-- Pantalla de rècords -->
   <div class="panel hidden" id="panelRecords">
     <h1 style="font-size:clamp(22px,4.5vw,42px)">🏆 RÈCORDS</h1>
     <div class="rec-sub">TOP 10 // LOCAL</div>
@@ -103,8 +98,6 @@ button.ghost:hover{background:rgba(54,234,255,.1)}
       <button id="recClear" class="ghost">ESBORRAR</button>
     </div>
   </div>
-
-  <!-- Pantalla per desar el nom després de Game Over -->
   <div class="panel hidden" id="panelSave">
     <div class="rec-badge" id="saveBadge">NOU RÈCORD!</div>
     <h1 style="font-size:clamp(22px,4.5vw,42px)">GUARDA EL TEU NOM</h1>
@@ -135,20 +128,17 @@ let paddle,balls=[],bricks=[],particles=[],drops=[],lasers=[],bombs=[],stars=[],
 let shake=0,shakeX=0,shakeY=0;
 let combo=1,comboTimer=0,frenzy=0;
 let touchOffset=0;
-let pendingScore=0; // puntuació pendent de guardar
+let pendingScore=0;
 const COLORS=['#21dfff','#21f5c5','#8cff39','#e8f43c','#ffad35','#ff4c9c','#bd5cff'];
 const rand=(a,b)=>a+Math.random()*(b-a);
 
-// ===== TAULA DE RÈCORDS (localStorage) =====
 const REC_KEY='neonBreakerRecords';
 const MAX_RECORDS=10;
 function getRecords(){
  try{const raw=localStorage.getItem(REC_KEY);if(!raw)return [];const arr=JSON.parse(raw);return Array.isArray(arr)?arr:[]}
  catch(e){return []}
 }
-function saveRecords(list){
- try{localStorage.setItem(REC_KEY,JSON.stringify(list.slice(0,MAX_RECORDS)))}catch(e){}
-}
+function saveRecords(list){try{localStorage.setItem(REC_KEY,JSON.stringify(list.slice(0,MAX_RECORDS)))}catch(e){}}
 function addRecord(name,points){
  const list=getRecords();
  const rec={name:(name||'Anònim').trim().slice(0,12)||'Anònim',points,date:Date.now()};
@@ -165,19 +155,12 @@ function qualifiesForRecords(pts){
 }
 function renderRecords(highlightDate){
  const list=getRecords();
- if(!list.length){
-  recList.innerHTML='<div class="rec-empty">Encara no hi ha rècords.<br>Sigues el primer!</div>';
-  return;
- }
+ if(!list.length){recList.innerHTML='<div class="rec-empty">Encara no hi ha rècords.<br>Sigues el primer!</div>';return}
  recList.innerHTML=list.map((r,i)=>{
   const cls=[];
   if(i===0)cls.push('top1');
   if(highlightDate&&r.date===highlightDate)cls.push('me');
-  return `<li class="${cls.join(' ')}">
-    <span class="pos">#${i+1}</span>
-    <span class="name">${escapeHtml(r.name)}</span>
-    <span class="pts">${r.points}</span>
-  </li>`;
+  return `<li class="${cls.join(' ')}"><span class="pos">#${i+1}</span><span class="name">${escapeHtml(r.name)}</span><span class="pts">${r.points}</span></li>`;
  }).join('');
 }
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -193,21 +176,15 @@ function hideOverlay(){overlay.classList.add('hidden')}
 
 recordsBtn.addEventListener('click',()=>{renderRecords();showPanel('records')});
 recBack.addEventListener('click',()=>{showPanel('main')});
-recClear.addEventListener('click',()=>{
- if(confirm('Segur que vols esborrar tots els rècords?')){
-  saveRecords([]);renderRecords();
- }
-});
+recClear.addEventListener('click',()=>{if(confirm('Segur que vols esborrar tots els rècords?')){saveRecords([]);renderRecords()}});
 saveBtn.addEventListener('click',()=>{
  const name=nameInput.value.trim()||'Anònim';
+ localStorage.setItem('neonBreakerLastName',name.slice(0,12));
  const list=addRecord(name,pendingScore);
  const justAdded=list.find(r=>r.points===pendingScore&&r.name===name.slice(0,12));
  renderRecords(justAdded?justAdded.date:null);
  showPanel('records');
- setTimeout(()=>{
-  // tornar al main després d'un moment
-  setTimeout(()=>{showPanel('main');resetMainPanel()},2500);
- },50);
+ setTimeout(()=>{setTimeout(()=>{showPanel('main');resetMainPanel()},2500)},50);
 });
 skipSave.addEventListener('click',()=>{showPanel('main');resetMainPanel()});
 nameInput.addEventListener('keydown',e=>{if(e.key==='Enter')saveBtn.click()});
@@ -218,14 +195,26 @@ function resetMainPanel(){
  startBtn.textContent='JUGAR';
 }
 
-// ===== RESIZE =====
+// ===== RESIZE AMB LÍMIT D'ASPECTE =====
+// El joc mai no serà més ample que 16:9 ni més alt que 3:4.
+// Si la pantalla és més extrema, es queda centrat amb franges negres.
 function resize(){
  dpr=Math.min(devicePixelRatio||1,2);
  const vw=window.innerWidth||document.documentElement.clientWidth;
  const vh=window.innerHeight||document.documentElement.clientHeight;
  const hudH=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--hud-h'))||52;
- const cw=vw;
- const ch=Math.max(200,vh-hudH);
+ const availH=Math.max(200,vh-hudH);
+ const MAX_ASPECT=16/9;
+ const MIN_ASPECT=3/4;
+ const screenAspect=vw/availH;
+ let cw,ch;
+ if(screenAspect>MAX_ASPECT){
+  ch=availH;cw=Math.round(ch*MAX_ASPECT);
+ }else if(screenAspect<MIN_ASPECT){
+  cw=vw;ch=Math.round(cw/MIN_ASPECT);
+ }else{
+  cw=vw;ch=availH;
+ }
  canvas.width=Math.round(cw*dpr);
  canvas.height=Math.round(ch*dpr);
  canvas.style.width=cw+'px';
@@ -338,10 +327,8 @@ function destroyBrick(b){
  beep(250+Math.random()*420,.055,'square',.018);
  addParticles(b.x+b.w/2,b.y+b.h/2,b.color,30,7);
  addShockwave(b.x+b.w/2,b.y+b.h/2,b.color,55);
-
  const bombChance=.18+level*.03+(frenzy>0?.15:0);
  if(Math.random()<bombChance){bombs.push({x:b.x+b.w/2,y:b.y+b.h/2,vy:2.5,fuse:1})}
-
  if(Math.random()<.2){
   const types=['wide','multi','laser','fire','giant','soft','bouncer'];
   const type=types[Math.floor(Math.random()*types.length)];
@@ -396,6 +383,33 @@ function collideBrick(ball,b){
  if(ball.fire>0){const cx=b.x+b.w/2,cy=b.y+b.h/2;addShockwave(cx,cy,'#ffaa33',70);addParticles(cx,cy,'#ff6622',25,8);shake=Math.min(25,shake+6);beep(300,.1,'sawtooth',.03);b.hp=0;destroyBrick(b);return}
  if(ball.type==='bouncer'){ball.bounces++;const boost=1+Math.min(ball.bounces*.05,.7);ball.vx*=boost;ball.vy*=boost;if(ball.bounces%3===0){addParticles(ball.x,ball.y,'#8cff39',8,4);beep(600,.03,'square',.01)}}
  destroyBrick(b);
+}
+
+// ===== LÀSER: comprovació de línia vertical entre posicions =====
+// Abans es comprovava només el punt (l.x, l.y), però amb velocitat 14-16
+// el làser podia saltar-se un maó prim. Ara comprovem tota la línia
+// recorreguda en aquest frame: de l.y_old a l.y_new.
+function laserHitBricks(l,yOld,yNew){
+ // yOld és la posició prèvia, yNew la nova (més amunt)
+ const yTop=Math.min(yOld,yNew);
+ const yBot=Math.max(yOld,yNew);
+ // Marge per cobrir l'amplada del feix
+ const halfW=3;
+ let hit=false;
+ for(const b of bricks){
+  if(!b.alive)continue;
+  // Comprovem si el feix (rectangle x±halfW, y entre yTop i yBot) toca el maó
+  if(l.x+halfW>=b.x && l.x-halfW<=b.x+b.w){
+   if(yBot>=b.y && yTop<=b.y+b.h){
+    destroyBrick(b);
+    addParticles(l.x,Math.max(b.y,yTop),b.color,12,5);
+    l.dead=true;
+    hit=true;
+    break;
+   }
+  }
+ }
+ return hit;
 }
 
 let serveAt=0;
@@ -497,13 +511,13 @@ function update(dt){
  });
  drops=drops.filter(d=>!d.taken&&d.y<H+20);
 
+ // Làsers amb detecció de línia
  lasers.forEach(l=>{
+  const yOld=l.y;
   l.y+=l.vy*f;
-  for(const b of bricks){
-   if(b.alive&&l.x>b.x&&l.x<b.x+b.w&&l.y>b.y&&l.y<b.y+b.h){destroyBrick(b);l.dead=true;addParticles(l.x,l.y,b.color,12,5);break}
-  }
+  laserHitBricks(l,yOld,l.y);
  });
- lasers=lasers.filter(l=>!l.dead&&l.y>0);
+ lasers=lasers.filter(l=>!l.dead&&l.y>-20);
 
  bombs.forEach(bm=>{bm.y+=bm.vy*f;bm.fuse-=f*.01;if(bm.y>paddle.y+paddle.h||bm.fuse<=0){bm.dead=true;explodeBomb(bm.x,bm.y,130)}});
  bombs=bombs.filter(b=>!b.dead);
@@ -653,7 +667,7 @@ function frame(t){if(state==='serve'){if(t-serveAt>900){state='playing';last=t;r
 function handlePointer(clientX){
  const rect=canvas.getBoundingClientRect();
  const px=(clientX-rect.left)/rect.width*W;
- paddle.target=Math.max(0,Math.min(W,px));
+ if(px>=-50&&px<=W+50){paddle.target=Math.max(0,Math.min(W,px))}
 }
 
 canvas.addEventListener('pointermove',e=>{if(paddle)handlePointer(e.clientX)});
