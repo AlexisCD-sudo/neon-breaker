@@ -147,7 +147,7 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const db = getDatabase(app);
+const db = getDatabase(app, firebaseConfig.databaseURL);
 
 let firebaseUser = null;
 let firebaseAuthError = null;
