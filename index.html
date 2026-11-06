@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="ca">
 <head>
+<!-- Neon Breaker: acceleració de pilota recuperada amb límits màxims ampliats -->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#000000">
@@ -466,7 +467,8 @@ function makeBall(x,y,vx,vy,type='normal'){
 function resetBall(){
  // Doble protecció: si paddle no existeix o no té coordenades, sortim
  if(!paddle || paddle.x === undefined) return;
- balls=[makeBall(paddle.x+paddle.w/2,paddle.y-13,rand(-3,3),-6-level*.35,'normal')];
+ // La velocitat inicial es manté controlada també en nivells molt alts.
+ balls=[makeBall(paddle.x+paddle.w/2,paddle.y-13,rand(-2.8,2.8),-Math.min(8.2,6.2+level*.025),'normal')];
 }
 
 const PATTERNS={
@@ -661,7 +663,7 @@ function collideBrick(ball,b){
   if(Math.abs(dx)>Math.abs(dy))ball.vx*=-1;else ball.vy*=-1;
  }
  if(ball.fire>0){const cx=b.x+b.w/2,cy=b.y+b.h/2;addShockwave(cx,cy,'#ffaa33',60);addParticles(cx,cy,'#ff6622',18,6);shake=Math.min(25,shake+6);beep(300,.1,'sawtooth',.03);b.hp=0;destroyBrick(b);return}
- if(ball.type==='bouncer'){ball.bounces++;const boost=1+Math.min(ball.bounces*.05,.7);ball.vx*=boost;ball.vy*=boost;if(ball.bounces%3===0){addParticles(ball.x,ball.y,'#8cff39',6,3);beep(600,.03,'square',.01)}}
+ if(ball.type==='bouncer'){ball.bounces++;const boost=1.015;ball.vx*=boost;ball.vy*=boost;const speed=Math.hypot(ball.vx,ball.vy),cap=17;if(speed>cap){ball.vx*=cap/speed;ball.vy*=cap/speed}if(ball.bounces%3===0){addParticles(ball.x,ball.y,'#8cff39',6,3);beep(600,.03,'square',.01)}}
  destroyBrick(b);
 }
 
@@ -716,13 +718,14 @@ function beginDroneEncounter(){
 function spawnDroneWave(){
  const cycle=encounter.cycle;
  // La prima ondata resta amable; la pressió creix gradualment cada deu nivells.
- const count=Math.min(9,2+Math.floor((cycle-1)*.8));
- const hp=cycle<3?1:1+Math.floor((cycle-1)/3);
+ // Progressió definida: nivell 10 = 3 drons, 20 = 5, 30 = 6, 40 = 7...
+ const count=cycle===1?3:Math.min(12,cycle+3);
+ const hp=cycle<4?1:1+Math.floor((cycle-2)/4);
  for(let i=0;i<count;i++){
-  const x=rand(90,W-90),y=rand(105,Math.max(150,H*.62));
-  const speed=4.4+Math.min(2.0,(cycle-1)*.2);
+  const x=rand(76,W-76),y=rand(100,Math.max(170,H-190));
+  const speed=4.9+Math.min(2.4,(cycle-1)*.2);
   const angle=rand(0,Math.PI*2);
-  drones.push({x,y,w:62,h:38,hp,maxHp:hp,phase:rand(0,Math.PI*2),vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed*.78,speed,alive:true,fireTimer:rand(100,220)});
+  drones.push({x,y,w:62,h:38,hp,maxHp:hp,phase:rand(0,Math.PI*2),vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed*.78,speed,alive:true,fireTimer:rand(165,285),targetX:rand(76,W-76),targetY:rand(100,Math.max(170,H-190)),turnTimer:rand(35,85),bank:0});
  }
  encounter.phase='drones';
  encounter.timer=0;
@@ -769,18 +772,36 @@ function updateDroneEncounter(f){
   if(paddle.cooldown>0)paddle.cooldown-=f;
   for(const d of drones){
    if(!d.alive)continue;
-   // Volen per tota l'arena, rebotant als límits en lloc de quedar-se en una franja.
-   d.x+=d.vx*f;d.y+=d.vy*f;
-   const minX=48,maxX=W-48,minY=92,maxY=Math.max(150,H*.68);
-   if(d.x<minX){d.x=minX;d.vx=Math.abs(d.vx)}
-   if(d.x>maxX){d.x=maxX;d.vx=-Math.abs(d.vx)}
-   if(d.y<minY){d.y=minY;d.vy=Math.abs(d.vy)}
-   if(d.y>maxY){d.y=maxY;d.vy=-Math.abs(d.vy)}
-   // Petites variacions de trajectòria perquè els drons semblin pilotats.
-   d.phase+=.025*f;
-   d.vx+=Math.sin(d.phase*1.7)*.012*f;d.vy+=Math.cos(d.phase*1.3)*.01*f;
-   const maxSpeed=d.speed*1.18,vel=Math.hypot(d.vx,d.vy);
+   // Vol autònom: canvien de punt de patrulla, acceleren i giren amb inèrcia.
+   // Això evita el moviment mecànic de simple rebot entre parets.
+   const minX=48,maxX=W-48,minY=88,maxY=Math.max(160,H-165);
+   d.turnTimer-=f;
+   if(d.turnTimer<=0||Math.hypot(d.targetX-d.x,d.targetY-d.y)<65){
+    d.targetX=rand(minX,maxX);d.targetY=rand(minY,maxY);d.turnTimer=rand(38,88);
+   }
+   d.phase+=.035*f;
+   const dx=d.targetX-d.x,dy=d.targetY-d.y,dist=Math.max(1,Math.hypot(dx,dy));
+   const desiredX=(dx/dist)*d.speed+Math.sin(d.phase*1.8)*.8;
+   const desiredY=(dy/dist)*d.speed+Math.cos(d.phase*1.35)*.65;
+   d.vx+=(desiredX-d.vx)*Math.min(1,.055*f);
+   d.vy+=(desiredY-d.vy)*Math.min(1,.055*f);
+   const maxSpeed=d.speed*1.22,vel=Math.hypot(d.vx,d.vy);
    if(vel>maxSpeed){d.vx=d.vx/vel*maxSpeed;d.vy=d.vy/vel*maxSpeed}
+   d.x+=d.vx*f;d.y+=d.vy*f;
+   if(d.x<minX||d.x>maxX){d.x=Math.max(minX,Math.min(maxX,d.x));d.vx*=-.72;d.targetX=rand(minX,maxX)}
+   if(d.y<minY||d.y>maxY){d.y=Math.max(minY,Math.min(maxY,d.y));d.vy*=-.72;d.targetY=rand(minY,maxY)}
+   d.bank=Math.max(-.45,Math.min(.45,d.vx*.055));
+   // Cada dron dispara estrelles vermelles cap a la pala. Els trets van esglaonats
+   // i són lents al principi perquè la primera onada sigui justa.
+   d.fireTimer-=f;
+   if(d.fireTimer<=0){
+    const sx=d.x,sy=d.y+d.h*.42,targetX=paddle.x+paddle.w/2;
+    const aim=Math.max(-1,Math.min(1,(targetX-sx)/Math.max(1,H*.42)));
+    const shotSpeed=2.05+Math.min(1.0,(encounter.cycle-1)*.075);
+    enemyStars.push({x:sx,y:sy,vx:aim*1.35+rand(-.35,.35),vy:shotSpeed,r:12,rot:rand(0,Math.PI),spin:rand(-.12,.12),life:900});
+    d.fireTimer=rand(190,275)-Math.min(35,(encounter.cycle-1)*3);
+    beep(260,.045,'square',.009);
+   }
   }
   for(let i=lasers.length-1;i>=0;i--){
    const l=lasers[i];l.y+=l.vy*f;let hit=false;
@@ -793,7 +814,7 @@ function updateDroneEncounter(f){
       d.alive=false;
       // Explosió de dron molt més grossa que la d'un maó.
       addShockwave(d.x,d.y,'#ff243f',190);addShockwave(d.x,d.y,'#ff8a32',125);
-      addParticles(d.x,d.y,'#ff243f',76,13);addParticles(d.x,d.y,'#ffcc55',42,9);
+      addParticles(d.x,d.y,'#ff243f',88,14);addParticles(d.x,d.y,'#ffcc55',52,10);
       shake=Math.min(42,shake+13);noiseBurst(.18,.06);beep(125,.24,'sawtooth',.05);
       // Cada dron deixa una o dues estrelles vermelles hostils.
       const starCount=Math.random()<.5?1:2;
@@ -879,9 +900,9 @@ function update(dt){
    else{b.rot=(b.rot||0)+(b.rotV||.35)*f*frenzyMult;continue}
   }
   b.x+=b.vx*f*frenzyMult;b.y+=b.vy*f*frenzyMult;
-  if(b.x-b.r<12){b.x=12+b.r;b.vx=Math.abs(b.vx);if(b.type==='bouncer')b.vx*=1.06}
-  if(b.x+b.r>W-12){b.x=W-12-b.r;b.vx=-Math.abs(b.vx);if(b.type==='bouncer')b.vx*=1.06}
-  if(b.y-b.r<15){b.y=15+b.r;b.vy=Math.abs(b.vy);if(b.type==='bouncer')b.vy*=1.06}
+  if(b.x-b.r<12){b.x=12+b.r;b.vx=Math.abs(b.vx)}
+  if(b.x+b.r>W-12){b.x=W-12-b.r;b.vx=-Math.abs(b.vx)}
+  if(b.y-b.r<15){b.y=15+b.r;b.vy=Math.abs(b.vy)}
   if(b.vy>0&&b.y+b.r>=paddle.y&&b.y-b.r<=paddle.y+paddle.h&&b.x>=paddle.x-2&&b.x<=paddle.x+paddle.w+2){
    const hit=(b.x-(paddle.x+paddle.w/2))/(paddle.w/2);
    const speed=Math.hypot(b.vx,b.vy);
@@ -977,8 +998,11 @@ function update(dt){
  for(const b of balls){
   if(b.stuck)continue;
   const sp=Math.hypot(b.vx,b.vy);
-  const cap=b.type==='giant'?9:10+level*.6;
-  if(sp<cap){const ns=Math.min(cap,sp+.0015*f);b.vx*=ns/sp;b.vy*=ns/sp}
+  // Acceleració progressiva conservada: els rebots i els canvis de nivell poden fer créixer la velocitat.
+  // Límits alts per mantenir l'emoció sense permetre velocitats impossibles de controlar.
+  const cap=b.type==='giant'?13:(b.type==='bouncer'?17:15.5);
+  if(sp>cap){b.vx*=cap/sp;b.vy*=cap/sp}
+  else if(sp>0&&sp<cap){const ns=Math.min(cap,sp+.0022*f);b.vx*=ns/sp;b.vy*=ns/sp}
  }
 }
 
@@ -1142,7 +1166,7 @@ function drawDroneEncounter(){
  ctx.strokeRect(14,18,W-28,H-36);ctx.restore();
  drones.forEach(d=>{
   if(!d.alive)return;
-  ctx.save();ctx.translate(d.x,d.y);
+  ctx.save();ctx.translate(d.x,d.y);ctx.rotate(d.bank||0);
   const pulse=.75+.25*Math.sin(performance.now()*.012+d.phase);
   ctx.shadowColor='#ff39d4';ctx.shadowBlur=22;
   ctx.fillStyle='#24123e';ctx.strokeStyle='#ff39d4';ctx.lineWidth=2;
