@@ -27,11 +27,14 @@ button{border:0;border-radius:999px;padding:13px 30px;margin-top:10px;color:#041
 button:active{transform:scale(.97)}
 button.ghost{background:transparent;color:#aaf8ff;border:1px solid #36eaff66;box-shadow:none}
 button.ghost:hover{background:rgba(54,234,255,.1)}
+button:disabled{opacity:.5;cursor:wait}
 .sound{position:absolute;right:clamp(6px,1.5vw,16px);top:calc(var(--hud-h) + 6px);padding:5px 10px;font-size:9px;letter-spacing:.06em;background:rgba(24,40,70,.85);color:#aaf8ff;border:1px solid #36eaff66;box-shadow:0 0 12px #28eaff33;z-index:6}
 .small{font-size:10px;color:#8298b7;margin-top:10px;line-height:1.6}
 .hidden{display:none!important}
 .buttons{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
-.rec-sub{color:#9befff;letter-spacing:.15em;font-size:10px;margin-bottom:14px}
+.rec-sub{color:#9befff;letter-spacing:.15em;font-size:10px;margin-bottom:14px;display:flex;justify-content:center;gap:10px;align-items:center;flex-wrap:wrap}
+.rec-tab{padding:4px 12px;border-radius:999px;border:1px solid #36eaff66;background:transparent;color:#aaf8ff;cursor:pointer;font-size:10px;letter-spacing:.08em;font-weight:800}
+.rec-tab.active{background:linear-gradient(90deg,#40f4ff,#f24bdb);color:#04101a;border-color:transparent}
 .rec-list{list-style:none;padding:0;margin:0 0 8px;text-align:left}
 .rec-list li{display:grid;grid-template-columns:28px 1fr auto;gap:10px;align-items:center;padding:8px 12px;margin-bottom:6px;background:rgba(20,30,60,.6);border:1px solid rgba(53,234,255,.2);border-radius:10px;font-size:13px}
 .rec-list li .pos{font-weight:900;color:#4cf3ff;text-shadow:0 0 6px #35eaff;font-size:14px}
@@ -39,8 +42,12 @@ button.ghost:hover{background:rgba(54,234,255,.1)}
 .rec-list li .pts{color:#ff39d4;font-weight:900;text-shadow:0 0 6px #ff39d4}
 .rec-list li.top1{border-color:rgba(255,200,0,.6);box-shadow:0 0 12px rgba(255,200,0,.2)}
 .rec-list li.top1 .pos{color:#ffd700;text-shadow:0 0 6px #ffd700}
+.rec-list li.top2{border-color:rgba(192,192,192,.4)}
+.rec-list li.top3{border-color:rgba(205,127,50,.4)}
 .rec-list li.me{border-color:rgba(255,57,212,.6);box-shadow:0 0 12px rgba(255,57,212,.3)}
 .rec-empty{color:#8298b7;font-size:12px;padding:20px;text-align:center}
+.rec-loading{color:#4cf3ff;font-size:12px;padding:20px;text-align:center}
+.rec-error{color:#ff5c5c;font-size:11px;padding:10px;text-align:center;line-height:1.5}
 .rec-name-row{display:flex;gap:8px;margin:8px 0 12px}
 .rec-name-row input{flex:1;min-width:0;padding:11px 14px;border-radius:999px;border:1px solid #36eaff66;background:rgba(10,20,40,.9);color:#fff;font-size:14px;font-weight:700;letter-spacing:.05em;outline:none}
 .rec-name-row input:focus{border-color:#4cf3ff;box-shadow:0 0 12px #35eaff66}
@@ -91,11 +98,14 @@ button.ghost:hover{background:rgba(54,234,255,.1)}
   </div>
   <div class="panel hidden" id="panelRecords">
     <h1 style="font-size:clamp(22px,4.5vw,42px)">🏆 RÈCORDS</h1>
-    <div class="rec-sub">TOP 10 // LOCAL</div>
-    <ol class="rec-list" id="recList"></ol>
+    <div class="rec-sub">
+      <button class="rec-tab active" id="tabGlobal">GLOBAL</button>
+      <button class="rec-tab" id="tabLocal">EL MEU</button>
+    </div>
+    <div id="recContainer"></div>
     <div class="buttons">
       <button id="recBack" class="ghost">← TORNAR</button>
-      <button id="recClear" class="ghost">ESBORRAR</button>
+      <button id="recClear" class="ghost hidden">ESBORRAR LOCAL</button>
     </div>
   </div>
   <div class="panel hidden" id="panelSave">
@@ -106,76 +116,102 @@ button.ghost:hover{background:rgba(54,234,255,.1)}
       <input id="nameInput" type="text" maxlength="12" placeholder="El teu nom..." autocomplete="off" spellcheck="false">
     </div>
     <div class="buttons">
-      <button id="saveBtn">GUARDAR</button>
+      <button id="saveBtn">GUARDAR GLOBAL</button>
       <button id="skipSave" class="ghost">SALTAR</button>
     </div>
+    <div class="small" id="saveStatus"></div>
   </div>
 </div>
 </div>
-<script>
-(()=>{
-'use strict';
+
+<script type="module">
+// ===== FIREBASE =====
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getDatabase, ref, get, set, query, orderByChild, limitToLast, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyA0x36oL7iV0_HvE0C0UBnuckkDWmwiq-E",
+  authDomain: "neon-breaker-records.firebaseapp.com",
+  projectId: "neon-breaker-records",
+  storageBucket: "neon-breaker-records.firebasestorage.app",
+  messagingSenderId: "892803054055",
+  appId: "1:892803054055:web:ad41ec16a86487a5d0e542"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getDatabase(app);
+
+let firebaseUser = null;
+let firebaseReady = false;
+
+// Autenticació anònima
+signInAnonymously(auth).then(()=>{}).catch(err=>{
+ console.warn('Firebase auth error:',err);
+});
+onAuthStateChanged(auth,user=>{
+ firebaseUser=user;
+ firebaseReady=!!user;
+});
+
+// ===== LOCAL =====
+const REC_KEY='neonBreakerRecords';
+const MAX_RECORDS=10;
+function getLocalRecords(){try{const raw=localStorage.getItem(REC_KEY);if(!raw)return[];const arr=JSON.parse(raw);return Array.isArray(arr)?arr:[]}catch(e){return[]}}
+function saveLocalRecords(list){try{localStorage.setItem(REC_KEY,JSON.stringify(list.slice(0,MAX_RECORDS)))}catch(e){}}
+function addLocalRecord(name,points){
+ const list=getLocalRecords();
+ const rec={name:(name||'Anònim').trim().slice(0,12)||'Anònim',points,date:Date.now()};
+ list.push(rec);
+ list.sort((a,b)=>b.points-a.points);
+ saveLocalRecords(list);
+ return list;
+}
+
+// ===== GLOBAL (Firebase) =====
+// Desa el rècord de l'usuari només si supera el seu propi anterior.
+// Cada usuari només té UNA entrada a la BD (la seva millor puntuació).
+async function saveGlobalRecord(name,points){
+ if(!firebaseUser)throw new Error('No autenticat');
+ const uid=firebaseUser.uid;
+ const userRef=ref(db,'rankings/'+uid);
+ const snap=await get(userRef);
+ const current=snap.exists()?snap.val().score:0;
+ if(points>current){
+  await set(userRef,{name:name.slice(0,12),score:points,ts:Date.now()});
+  return true;
+ }
+ return false;
+}
+async function getGlobalTop(){
+ // Llegeix tots els rècords i ordena al client (més simple i suficient per a un joc petit)
+ const snap=await get(ref(db,'rankings'));
+ if(!snap.exists())return[];
+ const data=snap.val();
+ const list=Object.keys(data).map(uid=>({
+  uid,
+  name:data[uid].name||'Anònim',
+  points:data[uid].score||0
+ }));
+ list.sort((a,b)=>b.points-a.points);
+ return list.slice(0,MAX_RECORDS);
+}
+
+// ===== UI =====
 const canvas=document.getElementById('game'),ctx=canvas.getContext('2d',{alpha:false,desynchronized:true});
 const wrap=document.getElementById('wrap'),overlay=document.getElementById('overlay');
 const scoreEl=document.getElementById('score'),livesEl=document.getElementById('lives'),levelEl=document.getElementById('level'),bestEl=document.getElementById('best'),comboEl=document.getElementById('combo'),soundBtn=document.getElementById('sound');
 const panelMain=document.getElementById('panelMain'),panelRecords=document.getElementById('panelRecords'),panelSave=document.getElementById('panelSave');
-const recList=document.getElementById('recList'),nameInput=document.getElementById('nameInput'),saveScore=document.getElementById('saveScore'),saveBadge=document.getElementById('saveBadge');
-let best=Number(localStorage.getItem('neonBreakerBest')||0),soundOn=true,audioCtx=null;
+const recContainer=document.getElementById('recContainer'),nameInput=document.getElementById('nameInput'),saveScore=document.getElementById('saveScore'),saveBadge=document.getElementById('saveBadge');
+const tabGlobal=document.getElementById('tabGlobal'),tabLocal=document.getElementById('tabLocal');
 const startBtn=document.getElementById('start'),titleEl=document.getElementById('title'),messageEl=document.getElementById('message');
 const recordsBtn=document.getElementById('recordsBtn'),recBack=document.getElementById('recBack'),recClear=document.getElementById('recClear'),saveBtn=document.getElementById('saveBtn'),skipSave=document.getElementById('skipSave');
-let W=960,H=600,dpr=1,scale=1,last=0,raf=0,state='ready',score=0,lives=3,level=1,keys={};
-let paddle,balls=[],bricks=[],drops=[],lasers=[],bombs=[],stars=[],shockwaves=[],frenzyFx=[],matrix=[];
-let shake=0,shakeX=0,shakeY=0;
-let combo=1,comboTimer=0,frenzy=0;
-let pendingScore=0;
-let lastResizeTime=0;
-let lastBombAt=0;
-const COLORS=['#21dfff','#21f5c5','#8cff39','#e8f43c','#ffad35','#ff4c9c','#bd5cff'];
-const rand=(a,b)=>a+Math.random()*(b-a);
+const saveStatus=document.getElementById('saveStatus');
 
-// ===== PARTÍCULES OBJECT POOL =====
-const MAX_PARTICLES=140;
-const particlePool=[];
-for(let i=0;i<MAX_PARTICLES;i++){
- particlePool.push({x:0,y:0,vx:0,vy:0,life:0,max:1,size:1,color:'#fff',active:false});
-}
-let particleCount=0;
-function spawnParticle(x,y,color,vx,vy,life,size){
- if(particleCount>=MAX_PARTICLES)return;
- for(let i=0;i<MAX_PARTICLES;i++){
-  const p=particlePool[i];
-  if(!p.active){
-   p.x=x;p.y=y;p.vx=vx;p.vy=vy;p.life=life;p.max=life;p.size=size;p.color=color;p.active=true;
-   particleCount++;
-   return;
-  }
- }
-}
-function addParticles(x,y,color,n=18,spd=5){
- for(let i=0;i<n;i++){
-  if(particleCount>=MAX_PARTICLES)break;
-  const a=rand(0,Math.PI*2),s=rand(.5,spd);
-  spawnParticle(x,y,color,Math.cos(a)*s,Math.sin(a)*s,rand(20,40),rand(1.5,4));
- }
-}
-function addShockwave(x,y,color,maxR=80){if(shockwaves.length<20)shockwaves.push({x,y,r:5,maxR,color,life:1})}
-function addFrenzyFx(){if(frenzyFx.length<40){frenzyFx.push({x:rand(0,W),y:rand(0,H),life:rand(20,50),max:50,color:Math.random()<.5?'#ff39d4':'#35eaff'})}}
-
-const REC_KEY='neonBreakerRecords';
-const MAX_RECORDS=10;
-function getRecords(){try{const raw=localStorage.getItem(REC_KEY);if(!raw)return[];const arr=JSON.parse(raw);return Array.isArray(arr)?arr:[]}catch(e){return[]}}
-function saveRecords(list){try{localStorage.setItem(REC_KEY,JSON.stringify(list.slice(0,MAX_RECORDS)))}catch(e){}}
-function addRecord(name,points){const list=getRecords();const rec={name:(name||'Anònim').trim().slice(0,12)||'Anònim',points,date:Date.now()};list.push(rec);list.sort((a,b)=>b.points-a.points);saveRecords(list);return list}
-function qualifiesForRecords(pts){if(pts<=0)return false;const list=getRecords();if(list.length<MAX_RECORDS)return true;return pts>list[list.length-1].points}
-function renderRecords(highlightDate){
- const list=getRecords();
- if(!list.length){recList.innerHTML='<div class="rec-empty">Encara no hi ha rècords.<br>Sigues el primer!</div>';return}
- recList.innerHTML=list.map((r,i)=>{
-  const cls=[];if(i===0)cls.push('top1');if(highlightDate&&r.date===highlightDate)cls.push('me');
-  return `<li class="${cls.join(' ')}"><span class="pos">#${i+1}</span><span class="name">${escapeHtml(r.name)}</span><span class="pts">${r.points}</span></li>`;
- }).join('');
-}
-function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+let best=Number(localStorage.getItem('neonBreakerBest')||0),soundOn=true,audioCtx=null;
+let currentRecordsTab='global';
+let recordsCache={global:null,local:null};
 
 function showPanel(which){
  [panelMain,panelRecords,panelSave].forEach(p=>p.classList.add('hidden'));
@@ -186,19 +222,84 @@ function showPanel(which){
 }
 function hideOverlay(){overlay.classList.add('hidden')}
 
-recordsBtn.addEventListener('click',()=>{renderRecords();showPanel('records')});
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+
+async function renderRecords(tab){
+ currentRecordsTab=tab;
+ tabGlobal.classList.toggle('active',tab==='global');
+ tabLocal.classList.toggle('active',tab==='local');
+ recClear.classList.toggle('hidden',tab!=='local');
+ recContainer.innerHTML='<div class="rec-loading">Carregant...</div>';
+
+ try{
+  let list;
+  if(tab==='global'){
+   list=await getGlobalTop();
+   recordsCache.global=list;
+  }else{
+   list=getLocalRecords();
+  }
+  if(!list.length){
+   recContainer.innerHTML='<div class="rec-empty">Encara no hi ha rècords.<br>Sigues el primer!</div>';
+   return;
+  }
+  const myUid=firebaseUser?firebaseUser.uid:null;
+  recContainer.innerHTML='<ol class="rec-list">'+list.map((r,i)=>{
+   const cls=[];
+   if(i===0)cls.push('top1');
+   else if(i===1)cls.push('top2');
+   else if(i===2)cls.push('top3');
+   if(tab==='global'&&myUid&&r.uid===myUid)cls.push('me');
+   return `<li class="${cls.join(' ')}"><span class="pos">#${i+1}</span><span class="name">${escapeHtml(r.name)}</span><span class="pts">${r.points}</span></li>`;
+  }).join('')+'</ol>';
+ }catch(err){
+  console.error(err);
+  recContainer.innerHTML='<div class="rec-error">No s\'han pogut carregar els rècords globals.<br>Comprova la connexió o les regles de Firebase.<br><small>'+escapeHtml(err.message||'')+'</small></div>';
+ }
+}
+
+tabGlobal.addEventListener('click',()=>renderRecords('global'));
+tabLocal.addEventListener('click',()=>renderRecords('local'));
+recordsBtn.addEventListener('click',()=>{showPanel('records');renderRecords(currentRecordsTab)});
 recBack.addEventListener('click',()=>{showPanel('main')});
-recClear.addEventListener('click',()=>{if(confirm('Segur que vols esborrar tots els rècords?')){saveRecords([]);renderRecords()}});
-saveBtn.addEventListener('click',()=>{
+recClear.addEventListener('click',()=>{if(confirm('Segur que vols esborrar els teus rècords locals?')){saveLocalRecords([]);renderRecords('local')}});
+
+saveBtn.addEventListener('click',async()=>{
  const name=nameInput.value.trim()||'Anònim';
  localStorage.setItem('neonBreakerLastName',name.slice(0,12));
- const list=addRecord(name,pendingScore);
- const justAdded=list.find(r=>r.points===pendingScore&&r.name===name.slice(0,12));
- renderRecords(justAdded?justAdded.date:null);
- showPanel('records');
- setTimeout(()=>{setTimeout(()=>{showPanel('main');resetMainPanel()},2500)},50);
+ saveBtn.disabled=true;
+ saveStatus.textContent='Guardant al rànquing global...';
+ try{
+  const improved=await saveGlobalRecord(name,pendingScore);
+  // Sempre desa també al local
+  addLocalRecord(name,pendingScore);
+  saveStatus.textContent=improved?'✅ Rècord global actualitzat!':'ℹ️ Ja tenies un rècord més alt al global.';
+  setTimeout(()=>{
+   saveBtn.disabled=false;
+   saveStatus.textContent='';
+   showPanel('records');
+   renderRecords('global');
+  },1200);
+ }catch(err){
+  console.error(err);
+  // Si falla el global, almenys desa el local
+  addLocalRecord(name,pendingScore);
+  saveStatus.textContent='⚠️ No s\'ha pogut guardar al global ('+err.message+'). Desat en local.';
+  setTimeout(()=>{
+   saveBtn.disabled=false;
+   saveStatus.textContent='';
+   showPanel('records');
+   renderRecords('local');
+  },2000);
+ }
 });
-skipSave.addEventListener('click',()=>{showPanel('main');resetMainPanel()});
+skipSave.addEventListener('click',()=>{
+ // Encara que salti, desa al local
+ const name=nameInput.value.trim()||'Anònim';
+ addLocalRecord(name,pendingScore);
+ showPanel('main');
+ resetMainPanel();
+});
 nameInput.addEventListener('keydown',e=>{if(e.key==='Enter')saveBtn.click()});
 
 function resetMainPanel(){
@@ -206,6 +307,38 @@ function resetMainPanel(){
  messageEl.textContent='Arrossega el dit a qualsevol lloc de la pantalla: la pala et segueix. Fes combos per activar el FRENZY!';
  startBtn.textContent='JUGAR';
 }
+
+// ===== JOC =====
+let W=960,H=600,dpr=1,scale=1,last=0,raf=0,state='ready',score=0,lives=3,level=1,keys={};
+let paddle,balls=[],bricks=[],drops=[],lasers=[],bombs=[],stars=[],shockwaves=[],frenzyFx=[],matrix=[];
+let shake=0,shakeX=0,shakeY=0;
+let combo=1,comboTimer=0,frenzy=0;
+let pendingScore=0;
+let lastResizeTime=0;
+let lastBombAt=0;
+const COLORS=['#21dfff','#21f5c5','#8cff39','#e8f43c','#ffad35','#ff4c9c','#bd5cff'];
+const rand=(a,b)=>a+Math.random()*(b-a);
+
+const MAX_PARTICLES=140;
+const particlePool=[];
+for(let i=0;i<MAX_PARTICLES;i++)particlePool.push({x:0,y:0,vx:0,vy:0,life:0,max:1,size:1,color:'#fff',active:false});
+let particleCount=0;
+function spawnParticle(x,y,color,vx,vy,life,size){
+ if(particleCount>=MAX_PARTICLES)return;
+ for(let i=0;i<MAX_PARTICLES;i++){
+  const p=particlePool[i];
+  if(!p.active){p.x=x;p.y=y;p.vx=vx;p.vy=vy;p.life=life;p.max=life;p.size=size;p.color=color;p.active=true;particleCount++;return}
+ }
+}
+function addParticles(x,y,color,n=18,spd=5){
+ for(let i=0;i<n;i++){
+  if(particleCount>=MAX_PARTICLES)break;
+  const a=rand(0,Math.PI*2),s=rand(.5,spd);
+  spawnParticle(x,y,color,Math.cos(a)*s,Math.sin(a)*s,rand(20,40),rand(1.5,4));
+ }
+}
+function addShockwave(x,y,color,maxR=80){if(shockwaves.length<20)shockwaves.push({x,y,r:5,maxR,color,life:1})}
+function addFrenzyFx(){if(frenzyFx.length<40)frenzyFx.push({x:rand(0,W),y:rand(0,H),life:rand(20,50),max:50,color:Math.random()<.5?'#ff39d4':'#35eaff'})}
 
 function resize(){
  const now=performance.now();
@@ -222,16 +355,12 @@ function resize(){
  if(screenAspect>MAX_ASPECT){ch=availH;cw=Math.round(ch*MAX_ASPECT)}
  else if(screenAspect<MIN_ASPECT){cw=vw;ch=Math.round(cw/MIN_ASPECT)}
  else{cw=vw;ch=availH}
- canvas.width=Math.round(cw*dpr);
- canvas.height=Math.round(ch*dpr);
- canvas.style.width=cw+'px';
- canvas.style.height=ch+'px';
- W=960;
- H=Math.max(380,Math.round(W*(ch/cw)));
+ canvas.width=Math.round(cw*dpr);canvas.height=Math.round(ch*dpr);
+ canvas.style.width=cw+'px';canvas.style.height=ch+'px';
+ W=960;H=Math.max(380,Math.round(W*(ch/cw)));
  scale=canvas.width/W;
  ctx.setTransform(scale,0,0,scale,0,0);
- makeStars();
- initMatrix();
+ makeStars();initMatrix();
 }
 let ro=null;
 function setupResize(){
@@ -248,28 +377,19 @@ function initMatrix(){
  const cols=Math.min(24,Math.floor(W/40));
  matrix=[];
  for(let i=0;i<cols;i++){
-  matrix.push({
-   x:i*(W/cols)+rand(0,10),
-   y:rand(-H,0),
-   speed:rand(.4,1.4),
-   chars:Array.from({length:Math.floor(rand(5,12))},()=>String.fromCharCode(0x30A0+Math.floor(Math.random()*96))),
-   timer:0
-  });
+  matrix.push({x:i*(W/cols)+rand(0,10),y:rand(-H,0),speed:rand(.4,1.4),chars:Array.from({length:Math.floor(rand(5,12))},()=>String.fromCharCode(0x30A0+Math.floor(Math.random()*96))),timer:0});
  }
 }
 function updateMatrix(f){
  for(let i=0;i<matrix.length;i++){
   const m=matrix[i];
-  m.y+=m.speed*f;
-  m.timer+=f;
+  m.y+=m.speed*f;m.timer+=f;
   if(m.timer>10){m.timer=0;const idx=Math.floor(Math.random()*m.chars.length);m.chars[idx]=String.fromCharCode(0x30A0+Math.floor(Math.random()*96))}
   if(m.y>H+120){m.y=rand(-H,-50);m.x=rand(0,W)}
  }
 }
 function drawMatrix(){
- ctx.save();
- ctx.font='12px monospace';
- ctx.textAlign='center';
+ ctx.save();ctx.font='12px monospace';ctx.textAlign='center';
  for(let i=0;i<matrix.length;i++){
   const m=matrix[i];
   for(let j=0;j<m.chars.length;j++){
@@ -293,123 +413,24 @@ function makeBall(x,y,vx,vy,type='normal'){
 }
 function resetBall(){balls=[makeBall(paddle.x+paddle.w/2,paddle.y-13,rand(-3,3),-6-level*.35,'normal')]}
 
-// ===== FORMES DE NIVELLS =====
-// Cada patró retorna una matriu de booleans [row][col] que diu si hi ha maó.
-// Les files i columnes s'adapten a l'amplada disponible.
-
 const PATTERNS={
- // Rectangle ple (clàssic)
- rect:(rows,cols)=>{
-  const p=[];
-  for(let r=0;r<rows;r++){p.push([]);for(let c=0;c<cols;c++)p[r].push(true)}
-  return p;
- },
- // Piràmide
- pyramid:(rows,cols)=>{
-  const p=[];
-  for(let r=0;r<rows;r++){
-   p.push([]);
-   const half=Math.floor(cols/2);
-   const width=Math.min(cols,Math.floor((r+1)*cols/rows)+2);
-   const start=half-Math.floor(width/2);
-   for(let c=0;c<cols;c++)p[r].push(c>=start&&c<start+width);
-  }
-  return p;
- },
- // Diamant
- diamond:(rows,cols)=>{
-  const p=[];
-  const cx=(cols-1)/2,cy=(rows-1)/2;
-  for(let r=0;r<rows;r++){
-   p.push([]);
-   for(let c=0;c<cols;c++){
-    const dx=Math.abs(c-cx)/cx,dy=Math.abs(r-cy)/cy;
-    p[r].push(dx+dy<=1.15);
-   }
-  }
-  return p;
- },
- // Ona
- wave:(rows,cols)=>{
-  const p=[];
-  for(let r=0;r<rows;r++){
-   p.push([]);
-   for(let c=0;c<cols;c++){
-    const wave=Math.sin(c*.7)*1.8+rows/2;
-    p[r].push(r>=wave-1&&r<=wave+1);
-   }
-  }
-  return p;
- },
- // Cor
- heart:(rows,cols)=>{
-  const p=[];
-  for(let r=0;r<rows;r++){
-   p.push([]);
-   for(let c=0;c<cols;c++){
-    const x=(c/(cols-1))*2-1;
-    const y=(r/(rows-1))*1.4-.6;
-    const a=x*x+y*y-1;
-    p[r].push(a*a*a-x*x*y*y*y<=0);
-   }
-  }
-  return p;
- },
- // Cara somrient
+ rect:(rows,cols)=>{const p=[];for(let r=0;r<rows;r++){p.push([]);for(let c=0;c<cols;c++)p[r].push(true)}return p},
+ pyramid:(rows,cols)=>{const p=[];for(let r=0;r<rows;r++){p.push([]);const half=Math.floor(cols/2);const width=Math.min(cols,Math.floor((r+1)*cols/rows)+2);const start=half-Math.floor(width/2);for(let c=0;c<cols;c++)p[r].push(c>=start&&c<start+width)}return p},
+ diamond:(rows,cols)=>{const p=[];const cx=(cols-1)/2,cy=(rows-1)/2;for(let r=0;r<rows;r++){p.push([]);for(let c=0;c<cols;c++){const dx=Math.abs(c-cx)/cx,dy=Math.abs(r-cy)/cy;p[r].push(dx+dy<=1.15)}}return p},
+ wave:(rows,cols)=>{const p=[];for(let r=0;r<rows;r++){p.push([]);for(let c=0;c<cols;c++){const wave=Math.sin(c*.7)*1.8+rows/2;p[r].push(r>=wave-1&&r<=wave+1)}}return p},
+ heart:(rows,cols)=>{const p=[];for(let r=0;r<rows;r++){p.push([]);for(let c=0;c<cols;c++){const x=(c/(cols-1))*2-1;const y=(r/(rows-1))*1.4-.6;const a=x*x+y*y-1;p[r].push(a*a*a-x*x*y*y*y<=0)}}return p},
  face:(rows,cols)=>{
-  const p=[];
-  for(let r=0;r<rows;r++){p.push([]);for(let c=0;c<cols;c++)p[r].push(true)}
-  // Ull esquerre
-  const eyeR=Math.max(1,Math.floor(rows*.2));
-  const eyeC=Math.floor(cols*.3);
+  const p=[];for(let r=0;r<rows;r++){p.push([]);for(let c=0;c<cols;c++)p[r].push(true)}
+  const eyeR=Math.max(1,Math.floor(rows*.2));const eyeC=Math.floor(cols*.3);
   for(let r=eyeR;r<eyeR*2;r++)for(let c=eyeC-1;c<=eyeC+1;c++)if(p[r]&&p[r][c]!==undefined)p[r][c]=false;
-  // Ull dret
   const eyeC2=Math.floor(cols*.7);
   for(let r=eyeR;r<eyeR*2;r++)for(let c=eyeC2-1;c<=eyeC2+1;c++)if(p[r]&&p[r][c]!==undefined)p[r][c]=false;
-  // Boca somrient
-  for(let c=Math.floor(cols*.2);c<cols*.8;c++){
-   const mid=cols/2;
-   const dist=Math.abs(c-mid)/(cols*.3);
-   const row=Math.floor(rows*.7+dist*dist*rows*.15);
-   if(p[row]&&p[row][c]!==undefined)p[row][c]=false;
-  }
+  for(let c=Math.floor(cols*.2);c<cols*.8;c++){const mid=cols/2;const dist=Math.abs(c-mid)/(cols*.3);const row=Math.floor(rows*.7+dist*dist*rows*.15);if(p[row]&&p[row][c]!==undefined)p[row][c]=false}
   return p;
  },
- // Nau espacial
- spaceship:(rows,cols)=>{
-  const p=[];
-  for(let r=0;r<rows;r++){
-   p.push([]);
-   for(let c=0;c<cols;c++){
-    const half=Math.floor(cols/2);
-    const noseWidth=Math.max(1,Math.floor((rows-r)*cols/(rows*2.2)));
-    const inNose=c>=half-noseWidth&&c<half+noseWidth;
-    const isWing=r>rows*.5&&(c<2||c>cols-3);
-    const isBody=r<rows*.75&&inNose;
-    p[r].push(isBody||isWing);
-   }
-  }
-  return p;
- },
- // Escacs
- checker:(rows,cols)=>{
-  const p=[];
-  for(let r=0;r<rows;r++){
-   p.push([]);
-   for(let c=0;c<cols;c++)p[r].push((r+c)%2===0);
-  }
-  return p;
- },
- // Creu
- cross:(rows,cols)=>{
-  const p=[];
-  const cr=Math.floor(rows/2),cc=Math.floor(cols/2);
-  for(let r=0;r<rows;r++){
-   p.push([]);
-   for(let c=0;c<cols;c++)p[r].push(r===cr||r===cr-1||c===cc||c===cc-1);
-  }
-  return p;
- }
+ spaceship:(rows,cols)=>{const p=[];for(let r=0;r<rows;r++){p.push([]);for(let c=0;c<cols;c++){const half=Math.floor(cols/2);const noseWidth=Math.max(1,Math.floor((rows-r)*cols/(rows*2.2)));const inNose=c>=half-noseWidth&&c<half+noseWidth;const isWing=r>rows*.5&&(c<2||c>cols-3);const isBody=r<rows*.75&&inNose;p[r].push(isBody||isWing)}}return p},
+ checker:(rows,cols)=>{const p=[];for(let r=0;r<rows;r++){p.push([]);for(let c=0;c<cols;c++)p[r].push((r+c)%2===0)}return p},
+ cross:(rows,cols)=>{const p=[];const cr=Math.floor(rows/2),cc=Math.floor(cols/2);for(let r=0;r<rows;r++){p.push([]);for(let c=0;c<cols;c++)p[r].push(r===cr||r===cr-1||c===cc||c===cc-1)}return p}
 };
 
 function buildBricks(){
@@ -420,11 +441,8 @@ function buildBricks(){
  const bw=(W-left*2-gap*(cols-1))/cols;
  const bh=25;
  const patternNames=['rect','pyramid','diamond','wave','face','spaceship','checker','cross','heart'];
- // Cada 3 nivells comença amb la cara per fer-ho memorable
  const patIdx=(level-1)%patternNames.length;
- const patName=patternNames[patIdx];
- const pattern=PATTERNS[patName](rows,cols);
-
+ const pattern=PATTERNS[patternNames[patIdx]](rows,cols);
  for(let r=0;r<rows;r++){
   for(let c=0;c<cols;c++){
    if(!pattern[r][c])continue;
@@ -434,7 +452,6 @@ function buildBricks(){
    bricks.push({x:left+c*(bw+gap),y:top+r*(bh+10),w:bw,h:bh,color,hp,alive:true,hack:isHack});
   }
  }
- // Seguretat: si el patró ha deixat menys de 8 maons, tornem al rectangle
  if(bricks.length<8){
   bricks=[];
   for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){
@@ -447,7 +464,6 @@ function buildBricks(){
 function startGame(){
  score=0;lives=3;level=1;combo=1;comboTimer=0;frenzy=0;paddle=newPaddle();
  drops=[];lasers=[];bombs=[];shockwaves=[];frenzyFx=[];shake=0;
- // Reset pool de partícules
  particlePool.forEach(p=>p.active=false);
  particleCount=0;
  buildBricks();resetBall();syncHud();state='playing';hideOverlay();
@@ -490,8 +506,7 @@ soundBtn.addEventListener('click',()=>{soundOn=!soundOn;soundBtn.textContent=sou
 function pause(){if(state==='playing'){state='paused';titleEl.innerHTML='PAUSA';messageEl.textContent='Prem el botó per continuar.';startBtn.textContent='CONTINUAR';showPanel('main')}else if(state==='paused'){state='playing';hideOverlay();last=performance.now();raf=requestAnimationFrame(loop)}}
 
 function addCombo(n=1){
- combo=Math.min(30,combo+n);
- comboTimer=150;
+ combo=Math.min(30,combo+n);comboTimer=150;
  if(combo>=8&&frenzy<=0){frenzy=600;beep(1320,.3,'sawtooth',.05);noiseBurst(.4,.06);shake=Math.min(30,shake+20)}
  syncHud();
 }
@@ -507,11 +522,8 @@ function destroyBrick(b,fromHack=false){
  beep(250+Math.random()*420,.055,'square',.018);
  addParticles(b.x+b.w/2,b.y+b.h/2,b.color,20,6);
  addShockwave(b.x+b.w/2,b.y+b.h/2,b.color,50);
-
  if(b.hack&&!fromHack){
-  beep(880,.2,'sawtooth',.05);
-  noiseBurst(.2,.05);
-  shake=Math.min(35,shake+15);
+  beep(880,.2,'sawtooth',.05);noiseBurst(.2,.05);shake=Math.min(35,shake+15);
   addShockwave(b.x+b.w/2,b.y+b.h/2,'#ffd700',180);
   addShockwave(b.x+b.w/2,b.y+b.h/2,'#ff39d4',140);
   bricks.forEach(other=>{
@@ -521,15 +533,9 @@ function destroyBrick(b,fromHack=false){
    if(sameCol||sameRow){other.hp=0;destroyBrick(other,true)}
   });
  }
-
- // Bombes rares
  const bombChance=.04+level*.006;
  const canSpawnBomb=(performance.now()-lastBombAt>2000)&&bombs.length<2;
- if(canSpawnBomb&&Math.random()<bombChance){
-  bombs.push({x:b.x+b.w/2,y:b.y+b.h/2,vy:2.5,fuse:1});
-  lastBombAt=performance.now();
- }
-
+ if(canSpawnBomb&&Math.random()<bombChance){bombs.push({x:b.x+b.w/2,y:b.y+b.h/2,vy:2.5,fuse:1});lastBombAt=performance.now()}
  if(Math.random()<.2){
   const types=['wide','multi','laser','fire','giant','soft','bouncer'];
   const type=types[Math.floor(Math.random()*types.length)];
@@ -540,13 +546,9 @@ function destroyBrick(b,fromHack=false){
 }
 
 function explodeBomb(x,y,radius=120){
- addShockwave(x,y,'#ff5522',radius*1.8);
- addShockwave(x,y,'#ffaa33',radius);
- addParticles(x,y,'#ff5522',40,10);
- addParticles(x,y,'#ffcc33',25,7);
- shake=Math.min(40,shake+25);
- noiseBurst(.3,.09);
- beep(80,.4,'sawtooth',.06);
+ addShockwave(x,y,'#ff5522',radius*1.8);addShockwave(x,y,'#ffaa33',radius);
+ addParticles(x,y,'#ff5522',40,10);addParticles(x,y,'#ffcc33',25,7);
+ shake=Math.min(40,shake+25);noiseBurst(.3,.09);beep(80,.4,'sawtooth',.06);
  bricks.forEach(b=>{
   if(!b.alive)return;
   const cx=b.x+b.w/2,cy=b.y+b.h/2;
@@ -583,17 +585,12 @@ function collideBrick(ball,b){
 }
 
 function laserHitBricks(l,yOld,yNew){
- const yTop=Math.min(yOld,yNew);
- const yBot=Math.max(yOld,yNew);
- const halfW=3;
+ const yTop=Math.min(yOld,yNew),yBot=Math.max(yOld,yNew),halfW=3;
  for(const b of bricks){
   if(!b.alive)continue;
-  if(l.x+halfW>=b.x && l.x-halfW<=b.x+b.w){
-   if(yBot>=b.y && yTop<=b.y+b.h){
-    destroyBrick(b);
-    addParticles(l.x,Math.max(b.y,yTop),b.color,8,4);
-    l.dead=true;
-    return true;
+  if(l.x+halfW>=b.x&&l.x-halfW<=b.x+b.w){
+   if(yBot>=b.y&&yTop<=b.y+b.h){
+    destroyBrick(b);addParticles(l.x,Math.max(b.y,yTop),b.color,8,4);l.dead=true;return true;
    }
   }
  }
@@ -604,12 +601,10 @@ let serveAt=0;
 function update(dt){
  const f=Math.min(dt/16.67,2.2);
  const frenzyMult=frenzy>0?1.6:1;
-
  if(keys.ArrowLeft||keys.a)paddle.target-=paddle.speed*f*5;
  if(keys.ArrowRight||keys.d)paddle.target+=paddle.speed*f*5;
  paddle.x+=(paddle.target-paddle.w/2-paddle.x)*Math.min(1,.45*f);
  paddle.x=Math.max(12,Math.min(W-paddle.w-12,paddle.x));
-
  if(paddle.wide>0){paddle.wide-=f;if(paddle.wide<=0)paddle.w=paddle.base}
  if(frenzy>0){
   frenzy-=f;
@@ -619,34 +614,26 @@ function update(dt){
  }
  if(paddle.laser>0){paddle.laser-=f;if(Math.floor(paddle.laser/14)!==Math.floor((paddle.laser+f)/14)){lasers.push({x:paddle.x+14,y:paddle.y-8,vy:-14},{x:paddle.x+paddle.w-14,y:paddle.y-8,vy:-14});beep(1400,.03,'square',.008)}}
  if(paddle.cooldown>0)paddle.cooldown-=f;
-
- if(comboTimer>0){comboTimer-=f;if(comboTimer<=0&&combo>1){resetCombo()}}
-
+ if(comboTimer>0){comboTimer-=f;if(comboTimer<=0&&combo>1)resetCombo()}
  if(shake>0){shake*=Math.pow(.86,f);if(shake<.5)shake=0}
  shakeX=rand(-shake,shake);shakeY=rand(-shake,shake);
-
  updateMatrix(f);
 
- // Balls
  for(let bi=balls.length-1;bi>=0;bi--){
   const b=balls[bi];
   b.trail.push({x:b.x,y:b.y});
   const trailLen=b.type==='giant'?14:(b.type==='soft'?10:8);
   if(b.trail.length>trailLen)b.trail.shift();
   if(b.fire>0)b.fire-=f;
-
   if(b.type==='soft'&&b.stuck){
    b.stuckTimer-=f;
    if(b.stuckTimer<=0){b.stuck=null;b.vx=rand(-5,5);b.vy=-Math.abs(b.vy)||-5}
    else{b.rot=(b.rot||0)+(b.rotV||.35)*f*frenzyMult;continue}
   }
-
   b.x+=b.vx*f*frenzyMult;b.y+=b.vy*f*frenzyMult;
-
   if(b.x-b.r<12){b.x=12+b.r;b.vx=Math.abs(b.vx);if(b.type==='bouncer')b.vx*=1.06}
   if(b.x+b.r>W-12){b.x=W-12-b.r;b.vx=-Math.abs(b.vx);if(b.type==='bouncer')b.vx*=1.06}
   if(b.y-b.r<15){b.y=15+b.r;b.vy=Math.abs(b.vy);if(b.type==='bouncer')b.vy*=1.06}
-
   if(b.vy>0&&b.y+b.r>=paddle.y&&b.y-b.r<=paddle.y+paddle.h&&b.x>=paddle.x-2&&b.x<=paddle.x+paddle.w+2){
    const hit=(b.x-(paddle.x+paddle.w/2))/(paddle.w/2);
    const speed=Math.hypot(b.vx,b.vy);
@@ -656,27 +643,24 @@ function update(dt){
    addParticles(b.x,paddle.y,'#ff55dc',6,4);
    beep(390,.06,'triangle',.022);
   }
-
   for(const brick of bricks){
-   if(brick.alive&&circleRect(b,brick)){
-    collideBrick(b,brick);
-    if(b.fire<=0&&b.type!=='bouncer')break;
-   }
+   if(brick.alive&&circleRect(b,brick)){collideBrick(b,brick);if(b.fire<=0&&b.type!=='bouncer')break}
   }
  }
-
  balls=balls.filter(b=>b.y-b.r<H+10);
-
  if(!balls.length){
   lives--;syncHud();resetCombo();
   beep(130,.28,'sawtooth',.035);shake=Math.min(35,shake+22);
   if(lives<=0){
-   state='over';
-   pendingScore=score;
-   if(qualifiesForRecords(score)){
+   state='over';pendingScore=score;
+   // Qualifica si supera el rècord local o si no hi ha rècords locals
+   const local=getLocalRecords();
+   const qualifies=score>0&&(local.length<MAX_RECORDS||score>local[local.length-1].points);
+   if(qualifies){
     saveScore.textContent=score;
-    saveBadge.textContent=score>getRecords().reduce((m,r)=>Math.max(m,r.points),0)?'🏆 NOU RÈCORD!':'ENTRA AL TOP 10';
+    saveBadge.textContent=score>best?'🏆 NOU RÈCORD!':'ENTRA AL TOP';
     nameInput.value=localStorage.getItem('neonBreakerLastName')||'';
+    saveStatus.textContent=firebaseReady?'Es guardarà al rànquing GLOBAL i al teu local.':'⚠️ Firebase no connectat. Es guardarà només en local.';
     showPanel('save');
     setTimeout(()=>nameInput.focus(),200);
    }else{
@@ -693,63 +677,44 @@ function update(dt){
   startBtn.textContent='CONTINUAR';
   showPanel('main');
  }
-
  for(let i=drops.length-1;i>=0;i--){
-  const d=drops[i];
-  d.y+=d.vy*f;
+  const d=drops[i];d.y+=d.vy*f;
   if(d.y>paddle.y&&d.y<paddle.y+paddle.h+10&&d.x>paddle.x&&d.x<paddle.x+paddle.w){
    applyPower(d.type);d.taken=true;
    addParticles(d.x,d.y,d.color,14,5);addShockwave(d.x,d.y,d.color,40);
   }
   if(d.taken||d.y>H+20)drops.splice(i,1);
  }
-
  for(let i=lasers.length-1;i>=0;i--){
-  const l=lasers[i];
-  const yOld=l.y;
-  l.y+=l.vy*f;
+  const l=lasers[i];const yOld=l.y;l.y+=l.vy*f;
   laserHitBricks(l,yOld,l.y);
   if(l.dead||l.y<-20)lasers.splice(i,1);
  }
-
  for(let i=bombs.length-1;i>=0;i--){
-  const bm=bombs[i];
-  bm.y+=bm.vy*f;bm.fuse-=f*.01;
+  const bm=bombs[i];bm.y+=bm.vy*f;bm.fuse-=f*.01;
   if(bm.y>paddle.y+paddle.h||bm.fuse<=0){bombs.splice(i,1);explodeBomb(bm.x,bm.y,130)}
  }
-
- // Partícules (pool)
  for(let i=0;i<MAX_PARTICLES;i++){
   const p=particlePool[i];
   if(!p.active)continue;
-  p.x+=p.vx*f;p.y+=p.vy*f;
-  p.vx*=.97;p.vy=p.vy*.97+.03*f;
-  p.life-=f;
+  p.x+=p.vx*f;p.y+=p.vy*f;p.vx*=.97;p.vy=p.vy*.97+.03*f;p.life-=f;
   if(p.life<=0){p.active=false;particleCount--}
  }
-
  for(let i=shockwaves.length-1;i>=0;i--){
-  const s=shockwaves[i];
-  s.r+=(s.maxR-s.r)*.2*f;s.life-=f*.03;
+  const s=shockwaves[i];s.r+=(s.maxR-s.r)*.2*f;s.life-=f*.03;
   if(s.life<=0)shockwaves.splice(i,1);
  }
-
  for(let i=frenzyFx.length-1;i>=0;i--){
-  const p=frenzyFx[i];
-  p.life-=f;p.y-=f*2;
+  const p=frenzyFx[i];p.life-=f;p.y-=f*2;
   if(p.life<=0)frenzyFx.splice(i,1);
  }
-
  if(bricks.every(b=>!b.alive)){
-  level++;buildBricks();
-  balls.forEach(b=>{b.vx*=1.12;b.vy*=1.12});
-  syncHud();
+  level++;buildBricks();balls.forEach(b=>{b.vx*=1.12;b.vy*=1.12});syncHud();
   addParticles(W/2,H/3,'#fff',60,10);addShockwave(W/2,H/3,'#fff',350);shake=30;
   beep(880,.2,'triangle',.05);
   setTimeout(()=>beep(1100,.25,'triangle',.05),120);
   setTimeout(()=>beep(1320,.3,'triangle',.05),240);
  }
-
  for(const b of balls){
   if(b.stuck)continue;
   const sp=Math.hypot(b.vx,b.vy);
@@ -761,29 +726,20 @@ function update(dt){
 function draw(){
  ctx.clearRect(0,0,W,H);
  ctx.save();ctx.translate(shakeX,shakeY);
-
  const bg=ctx.createLinearGradient(0,0,0,H);
  bg.addColorStop(0,'#08091b');bg.addColorStop(.55,'#050713');bg.addColorStop(1,'#10051c');
  ctx.fillStyle=bg;ctx.fillRect(-20,-20,W+40,H+40);
-
  drawMatrix();
-
  stars.forEach(s=>{s.y+=s.spd*(frenzy>0?2:1);if(s.y>H)s.y=0;ctx.globalAlpha=s.a;ctx.fillStyle=frenzy>0?'#ff39d4':'#83dfff';ctx.fillRect(s.x,s.y,s.s,s.s)});
  ctx.globalAlpha=1;
-
  if(frenzy>0){ctx.fillStyle=`rgba(255,57,212,${.04+Math.sin(performance.now()*.01)*.02})`;ctx.fillRect(0,0,W,H)}
-
  ctx.save();ctx.globalAlpha=.06;ctx.fillStyle='#000';
  for(let y=0;y<H;y+=4)ctx.fillRect(0,y,W,1);
  ctx.restore();
-
- ctx.save();
- ctx.shadowBlur=15;ctx.shadowColor=frenzy>0?'#ff39d4':'#e62fd4';ctx.strokeStyle=frenzy>0?'#ff39d4':'#e93ed9';ctx.lineWidth=3;
+ ctx.save();ctx.shadowBlur=15;ctx.shadowColor=frenzy>0?'#ff39d4':'#e62fd4';ctx.strokeStyle=frenzy>0?'#ff39d4':'#e93ed9';ctx.lineWidth=3;
  ctx.beginPath();ctx.moveTo(14,20);ctx.lineTo(14,H-18);ctx.quadraticCurveTo(14,H-8,26,H-8);ctx.lineTo(W-26,H-8);ctx.quadraticCurveTo(W-14,H-8,W-14,H-20);ctx.lineTo(W-14,20);ctx.stroke();
  ctx.restore();
-
  shockwaves.forEach(s=>{ctx.save();ctx.globalAlpha=s.life*.7;ctx.strokeStyle=s.color;ctx.lineWidth=3;ctx.shadowColor=s.color;ctx.shadowBlur=12;ctx.beginPath();ctx.arc(s.x,s.y,s.r,0,Math.PI*2);ctx.stroke();ctx.restore()});
-
  bricks.forEach(b=>{
   if(!b.alive)return;
   ctx.save();
@@ -797,8 +753,7 @@ function draw(){
    ctx.fillStyle='#fff';ctx.globalAlpha=.9;ctx.font='bold 12px monospace';ctx.textAlign='center';
    ctx.fillText('</>',b.x+b.w/2,b.y+b.h/2+4);
    const pulse=.5+.5*Math.sin(performance.now()*.006+b.x);
-   ctx.globalAlpha=pulse*.35;ctx.fillStyle='#ffd700';
-   roundRect(b.x,b.y,b.w,b.h,5);ctx.fill();
+   ctx.globalAlpha=pulse*.35;ctx.fillStyle='#ffd700';roundRect(b.x,b.y,b.w,b.h,5);ctx.fill();
   }else if(b.hp>1){
    ctx.fillStyle='#fff';ctx.globalAlpha=.5;ctx.font='bold 10px Arial';ctx.textAlign='center';
    ctx.fillText(String(b.hp),b.x+b.w/2,b.y+b.h/2+3);
@@ -806,7 +761,6 @@ function draw(){
   ctx.fillStyle='#fff';ctx.globalAlpha=.18;roundRect(b.x+4,b.y+3,b.w-8,3,2);ctx.fill();
   ctx.restore();
  });
-
  if(paddle){
   ctx.save();ctx.shadowColor=frenzy>0?'#ff39d4':'#f735d2';ctx.shadowBlur=frenzy>0?25:15;
   const pg=ctx.createLinearGradient(paddle.x,paddle.y,paddle.x+paddle.w,paddle.y);
@@ -814,13 +768,8 @@ function draw(){
   ctx.fillStyle=pg;roundRect(paddle.x,paddle.y,paddle.w,paddle.h,8);ctx.fill();
   ctx.shadowBlur=6;ctx.strokeStyle='#fff';ctx.lineWidth=1;roundRect(paddle.x+2,paddle.y+1,paddle.w-4,paddle.h-2,7);ctx.stroke();
   ctx.restore();
-  if(paddle.laser>0||frenzy>0){
-   ctx.save();ctx.shadowColor='#ff4ee8';ctx.shadowBlur=12;ctx.fillStyle='#ff6de8';
-   ctx.fillRect(paddle.x+11,paddle.y-14,5,12);ctx.fillRect(paddle.x+paddle.w-16,paddle.y-14,5,12);
-   ctx.restore();
-  }
+  if(paddle.laser>0||frenzy>0){ctx.save();ctx.shadowColor='#ff4ee8';ctx.shadowBlur=12;ctx.fillStyle='#ff6de8';ctx.fillRect(paddle.x+11,paddle.y-14,5,12);ctx.fillRect(paddle.x+paddle.w-16,paddle.y-14,5,12);ctx.restore()}
  }
-
  balls.forEach(b=>{
   ctx.save();
   b.trail.forEach((t,i)=>{const a=(i/b.trail.length)*.3;ctx.globalAlpha=a;ctx.fillStyle=b.fire>0?'#ffaa33':b.glow;ctx.beginPath();ctx.arc(t.x,t.y,b.r*(i/b.trail.length),0,Math.PI*2);ctx.fill()});
@@ -858,7 +807,6 @@ function draw(){
   }
   ctx.restore();
  });
-
  drops.forEach(d=>{
   ctx.save();ctx.translate(d.x,d.y);ctx.rotate(Math.PI/4);
   ctx.shadowColor=d.color;ctx.shadowBlur=12;ctx.fillStyle=d.color;
@@ -867,45 +815,32 @@ function draw(){
   const label={wide:'W',multi:'M',laser:'L',fire:'F',giant:'G',soft:'S',bouncer:'B'}[d.type]||'?';
   ctx.fillText(label,d.x,d.y+4);
  });
-
  lasers.forEach(l=>{
-  ctx.save();
-  ctx.shadowColor='#ff4ee8';ctx.shadowBlur=10;
+  ctx.save();ctx.shadowColor='#ff4ee8';ctx.shadowBlur=10;
   const lg=ctx.createLinearGradient(l.x,l.y,l.x,l.y+18);
   lg.addColorStop(0,'#ffffff');lg.addColorStop(1,'#ff4ee8');
-  ctx.fillStyle=lg;ctx.fillRect(l.x-2,l.y,4,18);
-  ctx.restore();
+  ctx.fillStyle=lg;ctx.fillRect(l.x-2,l.y,4,18);ctx.restore();
  });
-
  bombs.forEach(bm=>{ctx.save();ctx.translate(bm.x,bm.y);const pulse=.8+Math.sin(performance.now()*.025)*.25;ctx.shadowColor='#ff5522';ctx.shadowBlur=20*pulse;ctx.fillStyle='#ff5522';ctx.beginPath();ctx.arc(0,0,9*pulse,0,Math.PI*2);ctx.fill();ctx.fillStyle='#ffcc33';ctx.beginPath();ctx.arc(0,0,5*pulse,0,Math.PI*2);ctx.fill();ctx.restore()});
-
- // Partícules (pool, sense save/restore)
  for(let i=0;i<MAX_PARTICLES;i++){
   const p=particlePool[i];
   if(!p.active)continue;
   if(p.x<-20||p.x>W+20||p.y<-20||p.y>H+20)continue;
   ctx.globalAlpha=Math.max(0,p.life/p.max);
-  ctx.fillStyle=p.color;
-  ctx.fillRect(p.x,p.y,p.size,p.size);
+  ctx.fillStyle=p.color;ctx.fillRect(p.x,p.y,p.size,p.size);
  }
  ctx.globalAlpha=1;
-
  frenzyFx.forEach(p=>{ctx.save();ctx.globalAlpha=p.life/p.max;ctx.strokeStyle=p.color;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(p.x,p.y+20);ctx.stroke();ctx.restore()});
-
  if(state==='serve'){ctx.fillStyle='#c8faff';ctx.textAlign='center';ctx.font='bold 16px Arial';ctx.shadowColor='#32eaff';ctx.shadowBlur=12;ctx.fillText('PREPARA\'T...',W/2,H/2+30);ctx.shadowBlur=0}
-
  ctx.restore();
 }
 
 function roundRect(x,y,w,h,r){ctx.beginPath();ctx.roundRect(x,y,w,h,r)}
 
-// Loop amb límit de dt i sense acumulació
 function loop(t){
  if(state!=='playing')return;
- const dt=Math.min(40,t-last);
- last=t;
- update(dt);
- draw();
+ const dt=Math.min(40,t-last);last=t;
+ update(dt);draw();
  raf=requestAnimationFrame(loop);
 }
 
@@ -914,7 +849,6 @@ function handlePointer(clientX){
  const px=(clientX-rect.left)/rect.width*W;
  if(px>=-50&&px<=W+50){paddle.target=Math.max(0,Math.min(W,px))}
 }
-
 canvas.addEventListener('pointermove',e=>{if(paddle)handlePointer(e.clientX)});
 canvas.addEventListener('pointerdown',e=>{
  if(paddle)handlePointer(e.clientX);
@@ -926,14 +860,12 @@ canvas.addEventListener('pointerdown',e=>{
 });
 canvas.addEventListener('touchstart',e=>{e.preventDefault()},{passive:false});
 canvas.addEventListener('touchmove',e=>{e.preventDefault()},{passive:false});
-
 window.addEventListener('keydown',e=>{
  keys[e.key]=true;
  if(e.key===' '||e.key==='p'||e.key==='P'){e.preventDefault();if(state==='playing'||state==='paused')pause()}
  if(e.key==='f'||e.key==='F'){if(state==='playing'&&paddle&&paddle.cooldown<=0){lasers.push({x:paddle.x+14,y:paddle.y-8,vy:-16},{x:paddle.x+paddle.w-14,y:paddle.y-8,vy:-16});paddle.cooldown=8;beep(1400,.03,'square',.008)}}
 });
 window.addEventListener('keyup',e=>keys[e.key]=false);
-
 startBtn.addEventListener('click',()=>{
  if(state==='paused'){state='playing';hideOverlay();last=performance.now();raf=requestAnimationFrame(loop)}
  else if(state==='serve'){hideOverlay();state='playing';last=performance.now();raf=requestAnimationFrame(loop)}
@@ -946,7 +878,6 @@ function init(){
 }
 requestAnimationFrame(()=>requestAnimationFrame(init));
 setTimeout(()=>{resize();if(state==='ready'){buildBricks();resetBall();draw()}},300);
-})();
 </script>
 </body>
 </html>
