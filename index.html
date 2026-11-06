@@ -150,9 +150,38 @@ const auth = getAuth(app);
 const db = getDatabase(app);
 
 let firebaseUser = null;
+let firebaseAuthError = null;
+let firebaseAuthPromise = null;
 
-signInAnonymously(auth).catch(err=>console.warn('Firebase auth error:',err));
-onAuthStateChanged(auth,user=>{ firebaseUser=user; });
+// Autenticació anònima: esperem que Firebase confirmi l'usuari abans de llegir o escriure.
+function ensureFirebaseAuth(){
+ if(firebaseUser) return Promise.resolve(firebaseUser);
+ if(firebaseAuthPromise) return firebaseAuthPromise;
+ firebaseAuthPromise = new Promise((resolve,reject)=>{
+  let unsubscribe=()=>{};
+  let finished=false;
+  const finish=(fn,value)=>{
+   if(finished)return;
+   finished=true;
+   clearTimeout(timer);
+   unsubscribe();
+   fn(value);
+  };
+  const timer=setTimeout(()=>finish(reject,new Error('Temps esgotat iniciant sessió anònima. Revisa Authentication i els dominis autoritzats.')),10000);
+  unsubscribe=onAuthStateChanged(auth,user=>{
+   firebaseUser=user;
+   if(user)finish(resolve,user);
+  },err=>{
+   firebaseAuthError=err;
+   finish(reject,err);
+  });
+  signInAnonymously(auth).catch(err=>{
+   firebaseAuthError=err;
+   finish(reject,err);
+  });
+ });
+ return firebaseAuthPromise;
+}
 
 // ===== LOCAL =====
 const REC_KEY='neonBreakerRecords';
@@ -170,35 +199,29 @@ function addLocalRecord(name,points){
 
 // ===== GLOBAL (Firebase) =====
 async function saveGlobalRecord(name,points){
- if(!firebaseUser)throw new Error('No autenticat');
- const userRef=ref(db,'rankings/'+firebaseUser.uid);
+ const user=await ensureFirebaseAuth();
+ const userRef=ref(db,'rankings/'+user.uid);
  const snap=await get(userRef);
- const current=snap.exists()?snap.val().score:0;
- if(points>current){
-  await set(userRef,{name:name.slice(0,12),score:points,ts:Date.now()});
+ const current=snap.exists()?Number(snap.val().score)||0:0;
+ if(Number(points)>current){
+  await set(userRef,{name:(name||'Anònim').trim().slice(0,12)||'Anònim',score:Number(points),ts:Date.now()});
   return true;
  }
  return false;
 }
 
 async function getGlobalTop(){
- const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Temps exhaurit')), 6000));
- try{
-  if(!firebaseUser){
-   await Promise.race([
-    new Promise(resolve => { const c=()=>firebaseUser?resolve():setTimeout(c,200); c(); }),
-    timeoutPromise
-   ]);
-  }
-  if(!firebaseUser) throw new Error('No autenticat');
-  
-  const snap = await Promise.race([get(ref(db,'rankings')), timeoutPromise]);
-  if(!snap.exists())return[];
-  const data = snap.val();
-  const list = Object.keys(data).map(uid=>({ uid, name:data[uid].name||'Anònim', points:data[uid].score||0 }));
-  list.sort((a,b)=>b.points-a.points);
-  return list.slice(0,MAX_RECORDS);
- }catch(err){ throw err; }
+ await ensureFirebaseAuth();
+ const snap=await get(ref(db,'rankings'));
+ if(!snap.exists())return[];
+ const data=snap.val()||{};
+ const list=Object.keys(data).map(uid=>({
+  uid,
+  name:(data[uid]&&data[uid].name)||'Anònim',
+  points:Number(data[uid]&&data[uid].score)||0
+ })).filter(r=>Number.isFinite(r.points));
+ list.sort((a,b)=>b.points-a.points);
+ return list.slice(0,MAX_RECORDS);
 }
 
 // ===== UI =====
@@ -262,43 +285,24 @@ saveBtn.addEventListener('click',async()=>{
  const name=nameInput.value.trim()||'Anònim';
  localStorage.setItem('neonBreakerLastName',name.slice(0,12));
  saveBtn.disabled=true;
- saveStatus.textContent='Guardant al rànquing global...';
-
- const timeoutId=setTimeout(()=>{ saveBtn.disabled=false; saveStatus.textContent='⚠️ Temps d\'espera exhaurit. Comprova la connexió.'; },12000);
-
+ saveStatus.textContent='Connectant amb Firebase i guardant el rècord...';
  try{
-  if(!firebaseUser){
-   saveStatus.textContent='Connectant amb Firebase...';
-   await new Promise((resolve,reject)=>{
-    const start=Date.now();
-    const check=()=>{ if(firebaseUser)resolve(); else if(Date.now()-start>8000)reject(new Error('Auth timeout')); else setTimeout(check,200); };
-    check();
-   });
-  }
-  if(!firebaseUser)throw new Error('Usuari no autenticat');
-  
-  const uid=firebaseUser.uid;
-  const userRef=ref(db,'rankings/'+uid);
-  let current=0;
-  try{ const snap=await get(userRef); if(snap.exists())current=snap.val().score||0; }catch(e){ console.warn('Read error (ignorat):',e); }
-
-  if(pendingScore>current){
-   await set(userRef,{name:name.slice(0,12),score:pendingScore,ts:Date.now()});
-   saveStatus.textContent='✅ Rècord global actualitzat!';
-  }else{
-   saveStatus.textContent='ℹ️ Ja tenies un rècord més alt al global.';
-  }
-
+  const updated=await saveGlobalRecord(name,pendingScore);
   addLocalRecord(name,pendingScore);
-  clearTimeout(timeoutId);
-  setTimeout(()=>{ saveBtn.disabled=false; saveStatus.textContent=''; showPanel('records'); renderRecords('global'); },1200);
-
+  saveStatus.textContent=updated?'✅ Rècord guardat al rànquing global!':'ℹ️ El teu rècord global ja és igual o superior.';
+  setTimeout(()=>{
+   saveBtn.disabled=false;
+   saveStatus.textContent='';
+   showPanel('records');
+   renderRecords('global');
+  },1000);
  }catch(err){
-  console.error('Error guardant:',err);
-  clearTimeout(timeoutId);
+  console.error('Error guardant a Firebase:',err);
   addLocalRecord(name,pendingScore);
-  saveStatus.textContent='⚠️ No s\'ha pogut guardar al global. Desat en local.';
-  setTimeout(()=>{ saveBtn.disabled=false; saveStatus.textContent=''; showPanel('records'); renderRecords('local'); },2000);
+  const code=err&&err.code?` (${err.code})`:'';
+  const detail=err&&err.message?` ${err.message}`:'';
+  saveStatus.textContent='⚠️ No s’ha pogut desar al global'+code+'.'+detail+' S’ha desat només en local.';
+  saveBtn.disabled=false;
  }
 });
 skipSave.addEventListener('click',()=>{ addLocalRecord(nameInput.value.trim()||'Anònim',pendingScore); showPanel('main'); resetMainPanel(); });
@@ -356,7 +360,7 @@ function resize(){
  const hudH=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--hud-h'))||52;
  const availH=Math.max(240,vh-hudH);
  const isMobile=/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)||vw<800;
- const maxWidth=isMobile?vw:540;
+ const maxWidth=isMobile?vw:820;
  // El joc sempre és vertical: 9:16 al mòbil i 3:4 a l'ordinador.
  // En pantalles més estretes, conserva la proporció real per no retallar el joc.
  const maxAspect=isMobile?9/16:3/4;
@@ -714,7 +718,7 @@ function update(dt){
     saveScore.textContent=score;
     saveBadge.textContent=score>best?'🏆 NOU RÈCORD!':'ENTRA AL TOP';
     nameInput.value=localStorage.getItem('neonBreakerLastName')||'';
-    saveStatus.textContent=firebaseUser?'Es guardarà al rànquing GLOBAL i al teu local.':'⚠️ Firebase no connectat. Es guardarà només en local.';
+    saveStatus.textContent='El rècord es desarà al rànquing global si Firebase està ben configurat.';
     showPanel('save');
     setTimeout(()=>nameInput.focus(),200);
    }else{
