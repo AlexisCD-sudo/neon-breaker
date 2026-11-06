@@ -10,14 +10,15 @@
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000;font-family:Arial,Helvetica,sans-serif;color:#effcff;overscroll-behavior:none;touch-action:none}
 body{display:block;position:fixed;inset:0}
-#wrap{position:fixed;inset:0;width:100vw;height:100vh;width:100dvw;height:100dvh;background:#000;overflow:hidden}
+#wrap{position:fixed;inset:0;width:100vw;height:100vh;width:100dvw;height:100dvh;background:#000;overflow:hidden;display:flex;justify-content:center;align-items:center}
 .hud{position:absolute;top:0;left:0;right:0;height:var(--hud-h);display:flex;justify-content:space-between;align-items:center;padding:0 clamp(8px,2vw,24px);background:#000;border-bottom:1px solid rgba(53,234,255,.25);pointer-events:none;z-index:5}
 .brand{font-size:clamp(10px,1.5vw,16px);font-weight:900;letter-spacing:.18em;color:#a8f8ff;text-shadow:0 0 8px #2deaff;white-space:nowrap}
 .stats{display:flex;gap:clamp(6px,1.8vw,24px);font-size:clamp(8px,1.2vw,13px);font-weight:800;letter-spacing:.06em;white-space:nowrap}
 .stats span{color:#fff}
 .stats b{color:#4cf3ff;margin-left:3px;text-shadow:0 0 6px #35eaff}
 .stats b.frenzy{color:#ff39d4;text-shadow:0 0 10px #ff39d4}
-#game{position:absolute;top:var(--hud-h);left:50%;transform:translateX(-50%);height:calc(100% - var(--hud-h));display:block;touch-action:none;cursor:crosshair;background:#050510}
+/* El canvas ara està centrat per defecte i limitat a una mida raonable */
+#game{display:block;touch-action:none;cursor:crosshair;background:#050510;box-shadow:0 0 40px rgba(53,234,255,.2);border:1px solid rgba(53,234,255,.3);border-radius:8px}
 #overlay{position:absolute;inset:0;display:grid;place-items:center;background:radial-gradient(ellipse at center,rgba(14,13,45,.82),rgba(2,2,12,.94));text-align:center;padding:20px;z-index:10;overflow-y:auto}
 .panel{max-width:560px;width:100%;padding:clamp(18px,3vw,34px);border:1px solid rgba(70,235,255,.45);border-radius:18px;background:rgba(6,10,30,.88);box-shadow:0 0 35px #0bd4ff33,inset 0 0 25px #a22cff18;margin:auto}
 h1{margin:0 0 6px;font-size:clamp(26px,5.5vw,56px);letter-spacing:.12em;line-height:1;color:#fff;text-shadow:0 0 8px #fff,0 0 22px #08dfff,0 0 42px #a42cff}
@@ -53,7 +54,7 @@ button:disabled{opacity:.5;cursor:wait}
 .rec-name-row input:focus{border-color:#4cf3ff;box-shadow:0 0 12px #35eaff66}
 .rec-name-row input::placeholder{color:#5a7090}
 .rec-badge{display:inline-block;padding:3px 10px;border-radius:999px;background:linear-gradient(90deg,#40f4ff,#f24bdb);color:#04101a;font-weight:900;font-size:10px;letter-spacing:.1em;margin-bottom:10px}
-@media(max-width:700px){:root{--hud-h:42px}.brand{letter-spacing:.06em;font-size:9px}.stats{gap:5px;font-size:7.5px}.sound{font-size:8px;padding:4px 8px;top:calc(var(--hud-h) + 4px)}.panel{padding:18px}p{font-size:12px}.rec-list li{font-size:12px;padding:7px 10px}}
+@media(max-width:700px){:root{--hud-h:42px}.brand{letter-spacing:.06em;font-size:9px}.stats{gap:5px;font-size:7.5px}.sound{font-size:8px;padding:4px 8px;top:calc(var(--hud-h) + 4px)}.panel{padding:18px}p{font-size:12px}.rec-list li{font-size:12px;padding:7px 10px}#game{border-radius:0;border:none;box-shadow:none}}
 @media (orientation:landscape) and (max-height:600px){
   :root{--hud-h:30px}
   .brand{font-size:10px;letter-spacing:.06em}
@@ -83,8 +84,11 @@ button:disabled{opacity:.5;cursor:wait}
     <div>COMBO <b id="combo">x1</b></div>
   </div>
 </div>
+
 <canvas id="game" aria-label="Neon Breaker Overdrive"></canvas>
+
 <button id="sound" class="sound">♫ SO: ON</button>
+
 <div id="overlay">
   <div class="panel" id="panelMain">
     <h1 id="title">NEON<br>OVERDRIVE</h1>
@@ -96,6 +100,7 @@ button:disabled{opacity:.5;cursor:wait}
     </div>
     <div class="small">MÒBIL: ARROSSEGA EL DIT · TOCA PER DISPARAR LÀSER<br>ESCRIPTORI: RATOLÍ / ← → · ESPAI O F PER DISPARAR · P PER PAUSAR</div>
   </div>
+  
   <div class="panel hidden" id="panelRecords">
     <h1 style="font-size:clamp(22px,4.5vw,42px)">🏆 RÈCORDS</h1>
     <div class="rec-sub">
@@ -108,6 +113,7 @@ button:disabled{opacity:.5;cursor:wait}
       <button id="recClear" class="ghost hidden">ESBORRAR LOCAL</button>
     </div>
   </div>
+
   <div class="panel hidden" id="panelSave">
     <div class="rec-badge" id="saveBadge">NOU RÈCORD!</div>
     <h1 style="font-size:clamp(22px,4.5vw,42px)">GUARDA EL TEU NOM</h1>
@@ -128,7 +134,7 @@ button:disabled{opacity:.5;cursor:wait}
 // ===== FIREBASE =====
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getDatabase, ref, get, set, query, orderByChild, limitToLast, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import { getDatabase, ref, get, set } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyA0x36oL7iV0_HvE0C0UBnuckkDWmwiq-E",
@@ -144,16 +150,9 @@ const auth = getAuth(app);
 const db = getDatabase(app);
 
 let firebaseUser = null;
-let firebaseReady = false;
 
-// Autenticació anònima
-signInAnonymously(auth).then(()=>{}).catch(err=>{
- console.warn('Firebase auth error:',err);
-});
-onAuthStateChanged(auth,user=>{
- firebaseUser=user;
- firebaseReady=!!user;
-});
+signInAnonymously(auth).catch(err=>console.warn('Firebase auth error:',err));
+onAuthStateChanged(auth,user=>{ firebaseUser=user; });
 
 // ===== LOCAL =====
 const REC_KEY='neonBreakerRecords';
@@ -170,12 +169,9 @@ function addLocalRecord(name,points){
 }
 
 // ===== GLOBAL (Firebase) =====
-// Desa el rècord de l'usuari només si supera el seu propi anterior.
-// Cada usuari només té UNA entrada a la BD (la seva millor puntuació).
 async function saveGlobalRecord(name,points){
  if(!firebaseUser)throw new Error('No autenticat');
- const uid=firebaseUser.uid;
- const userRef=ref(db,'rankings/'+uid);
+ const userRef=ref(db,'rankings/'+firebaseUser.uid);
  const snap=await get(userRef);
  const current=snap.exists()?snap.val().score:0;
  if(points>current){
@@ -184,18 +180,25 @@ async function saveGlobalRecord(name,points){
  }
  return false;
 }
+
 async function getGlobalTop(){
- // Llegeix tots els rècords i ordena al client (més simple i suficient per a un joc petit)
- const snap=await get(ref(db,'rankings'));
- if(!snap.exists())return[];
- const data=snap.val();
- const list=Object.keys(data).map(uid=>({
-  uid,
-  name:data[uid].name||'Anònim',
-  points:data[uid].score||0
- }));
- list.sort((a,b)=>b.points-a.points);
- return list.slice(0,MAX_RECORDS);
+ const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Temps exhaurit')), 6000));
+ try{
+  if(!firebaseUser){
+   await Promise.race([
+    new Promise(resolve => { const c=()=>firebaseUser?resolve():setTimeout(c,200); c(); }),
+    timeoutPromise
+   ]);
+  }
+  if(!firebaseUser) throw new Error('No autenticat');
+  
+  const snap = await Promise.race([get(ref(db,'rankings')), timeoutPromise]);
+  if(!snap.exists())return[];
+  const data = snap.val();
+  const list = Object.keys(data).map(uid=>({ uid, name:data[uid].name||'Anònim', points:data[uid].score||0 }));
+  list.sort((a,b)=>b.points-a.points);
+  return list.slice(0,MAX_RECORDS);
+ }catch(err){ throw err; }
 }
 
 // ===== UI =====
@@ -211,7 +214,6 @@ const saveStatus=document.getElementById('saveStatus');
 
 let best=Number(localStorage.getItem('neonBreakerBest')||0),soundOn=true,audioCtx=null;
 let currentRecordsTab='global';
-let recordsCache={global:null,local:null};
 
 function showPanel(which){
  [panelMain,panelRecords,panelSave].forEach(p=>p.classList.add('hidden'));
@@ -221,7 +223,6 @@ function showPanel(which){
  overlay.classList.remove('hidden');
 }
 function hideOverlay(){overlay.classList.add('hidden')}
-
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 
 async function renderRecords(tab){
@@ -233,28 +234,21 @@ async function renderRecords(tab){
 
  try{
   let list;
-  if(tab==='global'){
-   list=await getGlobalTop();
-   recordsCache.global=list;
-  }else{
-   list=getLocalRecords();
-  }
-  if(!list.length){
-   recContainer.innerHTML='<div class="rec-empty">Encara no hi ha rècords.<br>Sigues el primer!</div>';
-   return;
-  }
+  if(tab==='global'){ list=await getGlobalTop(); }
+  else{ list=getLocalRecords(); }
+  
+  if(!list.length){ recContainer.innerHTML='<div class="rec-empty">Encara no hi ha rècords.<br>Sigues el primer!</div>'; return; }
+  
   const myUid=firebaseUser?firebaseUser.uid:null;
   recContainer.innerHTML='<ol class="rec-list">'+list.map((r,i)=>{
    const cls=[];
-   if(i===0)cls.push('top1');
-   else if(i===1)cls.push('top2');
-   else if(i===2)cls.push('top3');
+   if(i===0)cls.push('top1'); else if(i===1)cls.push('top2'); else if(i===2)cls.push('top3');
    if(tab==='global'&&myUid&&r.uid===myUid)cls.push('me');
    return `<li class="${cls.join(' ')}"><span class="pos">#${i+1}</span><span class="name">${escapeHtml(r.name)}</span><span class="pts">${r.points}</span></li>`;
   }).join('')+'</ol>';
  }catch(err){
   console.error(err);
-  recContainer.innerHTML='<div class="rec-error">No s\'han pogut carregar els rècords globals.<br>Comprova la connexió o les regles de Firebase.<br><small>'+escapeHtml(err.message||'')+'</small></div>';
+  recContainer.innerHTML='<div class="rec-error">No s\'han pogut carregar els rècords globals.<br><small>'+escapeHtml(err.message||'')+'</small></div>';
  }
 }
 
@@ -269,37 +263,45 @@ saveBtn.addEventListener('click',async()=>{
  localStorage.setItem('neonBreakerLastName',name.slice(0,12));
  saveBtn.disabled=true;
  saveStatus.textContent='Guardant al rànquing global...';
+
+ const timeoutId=setTimeout(()=>{ saveBtn.disabled=false; saveStatus.textContent='⚠️ Temps d\'espera exhaurit. Comprova la connexió.'; },12000);
+
  try{
-  const improved=await saveGlobalRecord(name,pendingScore);
-  // Sempre desa també al local
+  if(!firebaseUser){
+   saveStatus.textContent='Connectant amb Firebase...';
+   await new Promise((resolve,reject)=>{
+    const start=Date.now();
+    const check=()=>{ if(firebaseUser)resolve(); else if(Date.now()-start>8000)reject(new Error('Auth timeout')); else setTimeout(check,200); };
+    check();
+   });
+  }
+  if(!firebaseUser)throw new Error('Usuari no autenticat');
+  
+  const uid=firebaseUser.uid;
+  const userRef=ref(db,'rankings/'+uid);
+  let current=0;
+  try{ const snap=await get(userRef); if(snap.exists())current=snap.val().score||0; }catch(e){ console.warn('Read error (ignorat):',e); }
+
+  if(pendingScore>current){
+   await set(userRef,{name:name.slice(0,12),score:pendingScore,ts:Date.now()});
+   saveStatus.textContent='✅ Rècord global actualitzat!';
+  }else{
+   saveStatus.textContent='ℹ️ Ja tenies un rècord més alt al global.';
+  }
+
   addLocalRecord(name,pendingScore);
-  saveStatus.textContent=improved?'✅ Rècord global actualitzat!':'ℹ️ Ja tenies un rècord més alt al global.';
-  setTimeout(()=>{
-   saveBtn.disabled=false;
-   saveStatus.textContent='';
-   showPanel('records');
-   renderRecords('global');
-  },1200);
+  clearTimeout(timeoutId);
+  setTimeout(()=>{ saveBtn.disabled=false; saveStatus.textContent=''; showPanel('records'); renderRecords('global'); },1200);
+
  }catch(err){
-  console.error(err);
-  // Si falla el global, almenys desa el local
+  console.error('Error guardant:',err);
+  clearTimeout(timeoutId);
   addLocalRecord(name,pendingScore);
-  saveStatus.textContent='⚠️ No s\'ha pogut guardar al global ('+err.message+'). Desat en local.';
-  setTimeout(()=>{
-   saveBtn.disabled=false;
-   saveStatus.textContent='';
-   showPanel('records');
-   renderRecords('local');
-  },2000);
+  saveStatus.textContent='⚠️ No s\'ha pogut guardar al global. Desat en local.';
+  setTimeout(()=>{ saveBtn.disabled=false; saveStatus.textContent=''; showPanel('records'); renderRecords('local'); },2000);
  }
 });
-skipSave.addEventListener('click',()=>{
- // Encara que salti, desa al local
- const name=nameInput.value.trim()||'Anònim';
- addLocalRecord(name,pendingScore);
- showPanel('main');
- resetMainPanel();
-});
+skipSave.addEventListener('click',()=>{ addLocalRecord(nameInput.value.trim()||'Anònim',pendingScore); showPanel('main'); resetMainPanel(); });
 nameInput.addEventListener('keydown',e=>{if(e.key==='Enter')saveBtn.click()});
 
 function resetMainPanel(){
@@ -319,6 +321,7 @@ let lastBombAt=0;
 const COLORS=['#21dfff','#21f5c5','#8cff39','#e8f43c','#ffad35','#ff4c9c','#bd5cff'];
 const rand=(a,b)=>a+Math.random()*(b-a);
 
+// ===== PARTÍCULES OBJECT POOL =====
 const MAX_PARTICLES=140;
 const particlePool=[];
 for(let i=0;i<MAX_PARTICLES;i++)particlePool.push({x:0,y:0,vx:0,vy:0,life:0,max:1,size:1,color:'#fff',active:false});
@@ -340,6 +343,7 @@ function addParticles(x,y,color,n=18,spd=5){
 function addShockwave(x,y,color,maxR=80){if(shockwaves.length<20)shockwaves.push({x,y,r:5,maxR,color,life:1})}
 function addFrenzyFx(){if(frenzyFx.length<40)frenzyFx.push({x:rand(0,W),y:rand(0,H),life:rand(20,50),max:50,color:Math.random()<.5?'#ff39d4':'#35eaff'})}
 
+// ===== RESIZE ADAPTATIU (Ara limita la mida a l'ordinador) =====
 function resize(){
  const now=performance.now();
  if(now-lastResizeTime<100)return;
@@ -349,14 +353,33 @@ function resize(){
  const vh=window.innerHeight||document.documentElement.clientHeight;
  const hudH=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--hud-h'))||52;
  const availH=Math.max(200,vh-hudH);
+ 
+ // Màxim de 600px d'amplada a l'ordinador perquè no es vegi gegant i vagi fluid
+ const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || vw < 800;
+ let maxWidth = isMobile ? vw : 540; // 540px d'ample màxim a desktop (vertical/columna)
+ 
  const MAX_ASPECT=16/9,MIN_ASPECT=3/4;
  const screenAspect=vw/availH;
  let cw,ch;
- if(screenAspect>MAX_ASPECT){ch=availH;cw=Math.round(ch*MAX_ASPECT)}
- else if(screenAspect<MIN_ASPECT){cw=vw;ch=Math.round(cw/MIN_ASPECT)}
- else{cw=vw;ch=availH}
+ 
+ // Calculem l'amplada i alçada segons l'espai
+ if(screenAspect>MAX_ASPECT){
+  ch=availH; cw=Math.round(ch*MAX_ASPECT);
+ }else if(screenAspect<MIN_ASPECT){
+  cw=vw; ch=Math.round(cw/MIN_ASPECT);
+ }else{
+  cw=vw; ch=availH;
+ }
+ 
+ // Apliquem el límit de amplada per a escriptori
+ if (cw > maxWidth && !isMobile) {
+   ch = Math.round(ch * (maxWidth / cw));
+   cw = maxWidth;
+ }
+ 
  canvas.width=Math.round(cw*dpr);canvas.height=Math.round(ch*dpr);
  canvas.style.width=cw+'px';canvas.style.height=ch+'px';
+ 
  W=960;H=Math.max(380,Math.round(W*(ch/cw)));
  scale=canvas.width/W;
  ctx.setTransform(scale,0,0,scale,0,0);
@@ -411,7 +434,12 @@ function makeBall(x,y,vx,vy,type='normal'){
  if(type==='bouncer')return {...base,r:9,glow:'#8cff39',bounces:0};
  return {...base,r:rand(6,11),glow:'#28eaff'};
 }
-function resetBall(){balls=[makeBall(paddle.x+paddle.w/2,paddle.y-13,rand(-3,3),-6-level*.35,'normal')]}
+
+// ARREGLAT: Protecció per si la pala encara no existeix
+function resetBall(){
+ if(!paddle) return;
+ balls=[makeBall(paddle.x+paddle.w/2,paddle.y-13,rand(-3,3),-6-level*.35,'normal')];
+}
 
 const PATTERNS={
  rect:(rows,cols)=>{const p=[];for(let r=0;r<rows;r++){p.push([]);for(let c=0;c<cols;c++)p[r].push(true)}return p},
@@ -653,14 +681,13 @@ function update(dt){
   beep(130,.28,'sawtooth',.035);shake=Math.min(35,shake+22);
   if(lives<=0){
    state='over';pendingScore=score;
-   // Qualifica si supera el rècord local o si no hi ha rècords locals
    const local=getLocalRecords();
    const qualifies=score>0&&(local.length<MAX_RECORDS||score>local[local.length-1].points);
    if(qualifies){
     saveScore.textContent=score;
     saveBadge.textContent=score>best?'🏆 NOU RÈCORD!':'ENTRA AL TOP';
     nameInput.value=localStorage.getItem('neonBreakerLastName')||'';
-    saveStatus.textContent=firebaseReady?'Es guardarà al rànquing GLOBAL i al teu local.':'⚠️ Firebase no connectat. Es guardarà només en local.';
+    saveStatus.textContent=firebaseUser?'Es guardarà al rànquing GLOBAL i al teu local.':'⚠️ Firebase no connectat. Es guardarà només en local.';
     showPanel('save');
     setTimeout(()=>nameInput.focus(),200);
    }else{
@@ -873,8 +900,12 @@ startBtn.addEventListener('click',()=>{
 });
 
 function init(){
- resize();paddle=newPaddle();buildBricks();resetBall();
- bestEl.textContent=best;draw();
+ resize();
+ paddle=newPaddle();
+ buildBricks();
+ resetBall();
+ bestEl.textContent=best;
+ draw();
 }
 requestAnimationFrame(()=>requestAnimationFrame(init));
 setTimeout(()=>{resize();if(state==='ready'){buildBricks();resetBall();draw()}},300);
