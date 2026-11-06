@@ -10,7 +10,7 @@
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000;font-family:Arial,Helvetica,sans-serif;color:#effcff;overscroll-behavior:none;touch-action:none}
 body{display:block;position:fixed;inset:0}
-#wrap{position:fixed;inset:0;width:100vw;height:100vh;width:100dvw;height:100dvh;background:#000;overflow:hidden;display:flex;justify-content:center;align-items:center}
+#wrap{position:fixed;inset:0;width:100vw;height:100vh;width:100dvw;height:100dvh;padding-top:var(--hud-h);background:#000;overflow:hidden;display:flex;justify-content:center;align-items:center}
 .hud{position:absolute;top:0;left:0;right:0;height:var(--hud-h);display:flex;justify-content:space-between;align-items:center;padding:0 clamp(8px,2vw,24px);background:#000;border-bottom:1px solid rgba(53,234,255,.25);pointer-events:none;z-index:5}
 .brand{font-size:clamp(10px,1.5vw,16px);font-weight:900;letter-spacing:.18em;color:#a8f8ff;text-shadow:0 0 8px #2deaff;white-space:nowrap}
 .stats{display:flex;gap:clamp(6px,1.8vw,24px);font-size:clamp(8px,1.2vw,13px);font-weight:800;letter-spacing:.06em;white-space:nowrap}
@@ -141,7 +141,8 @@ const firebaseConfig = {
   projectId: "neon-breaker-records",
   storageBucket: "neon-breaker-records.firebasestorage.app",
   messagingSenderId: "892803054055",
-  appId: "1:892803054055:web:ad41ec16a86487a5d0e542"
+  appId: "1:892803054055:web:ad41ec16a86487a5d0e542",
+  databaseURL: "https://neon-breaker-records-default-rtdb.europe-west1.firebasedatabase.app"
 };
 
 const app = initializeApp(firebaseConfig);
@@ -353,31 +354,33 @@ function resize(){
  const vw=window.innerWidth||document.documentElement.clientWidth;
  const vh=window.innerHeight||document.documentElement.clientHeight;
  const hudH=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--hud-h'))||52;
- const availH=Math.max(200,vh-hudH);
- 
- const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || vw < 800;
- let maxWidth = isMobile ? vw : 540;
- 
- const MAX_ASPECT=16/9,MIN_ASPECT=3/4;
+ const availH=Math.max(240,vh-hudH);
+ const isMobile=/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)||vw<800;
+ const maxWidth=isMobile?vw:540;
+ // El joc sempre és vertical: 9:16 al mòbil i 3:4 a l'ordinador.
+ // En pantalles més estretes, conserva la proporció real per no retallar el joc.
+ const maxAspect=isMobile?9/16:3/4;
  const screenAspect=vw/availH;
- let cw,ch;
- 
- if(screenAspect>MAX_ASPECT){ ch=availH; cw=Math.round(ch*MAX_ASPECT); }
- else if(screenAspect<MIN_ASPECT){ cw=vw; ch=Math.round(cw/MIN_ASPECT); }
- else{ cw=vw; ch=availH; }
- 
- if (cw > maxWidth && !isMobile) { ch = Math.round(ch * (maxWidth / cw)); cw = maxWidth; }
- 
- canvas.width=Math.round(cw*dpr);canvas.height=Math.round(ch*dpr);
- canvas.style.width=cw+'px';canvas.style.height=ch+'px';
- 
- W=960;H=Math.max(380,Math.round(W*(ch/cw)));
+ const aspect=Math.min(screenAspect,maxAspect);
+ let cw=Math.min(vw,availH*aspect,maxWidth);
+ let ch=cw/aspect;
+ // Arrodonim i garantim que el canvas no surti de l'espai disponible.
+ cw=Math.max(1,Math.floor(cw));
+ ch=Math.max(1,Math.min(availH,Math.floor(ch)));
+
+ canvas.width=Math.round(cw*dpr);
+ canvas.height=Math.round(ch*dpr);
+ canvas.style.width=cw+'px';
+ canvas.style.height=ch+'px';
+
+ W=960;
+ H=Math.max(520,Math.round(W*(ch/cw)));
  scale=canvas.width/W;
  ctx.setTransform(scale,0,0,scale,0,0);
- 
- if(isGameInitialized) {
-   makeStars();
-   initMatrix();
+
+ if(isGameInitialized){
+  makeStars();
+  initMatrix();
  }
 }
 
@@ -483,11 +486,15 @@ const PATTERNS={
 
 function buildBricks(){
  bricks=[];
- const rows=4+Math.min(3,Math.floor(level/2));
+ // Més files per aprofitar l'arena vertical sense saturar-la.
+ const rows=6+Math.min(4,Math.floor((level-1)/3));
  const cols=11;
- const gap=8,left=43,top=88;
+ const gap=8,left=43,top=105;
  const bw=(W-left*2-gap*(cols-1))/cols;
  const bh=25;
+ // Separem les files proporcionalment a l'alçada real del camp.
+ const targetBottom=Math.min(H*.48,H-260);
+ const rowStep=rows>1?Math.max(bh+9,Math.min(88,(targetBottom-top-bh)/(rows-1))):bh+9;
  const patternNames=['rect','pyramid','diamond','wave','face','spaceship','checker','cross','heart'];
  const patIdx=(level-1)%patternNames.length;
  const pattern=PATTERNS[patternNames[patIdx]](rows,cols);
@@ -497,14 +504,14 @@ function buildBricks(){
    const isHack=(r>=1&&r<=rows-2&&Math.random()<.06);
    const color=isHack?'#ffd700':COLORS[Math.min(COLORS.length-1,Math.floor(c/2)+Math.floor(r/2))];
    const hp=r===0?2:(isHack?3:1);
-   bricks.push({x:left+c*(bw+gap),y:top+r*(bh+10),w:bw,h:bh,color,hp,alive:true,hack:isHack});
+   bricks.push({x:left+c*(bw+gap),y:top+r*rowStep,w:bw,h:bh,color,hp,alive:true,hack:isHack});
   }
  }
  if(bricks.length<8){
   bricks=[];
   for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){
    const color=COLORS[Math.min(COLORS.length-1,Math.floor(c/2)+Math.floor(r/2))];
-   bricks.push({x:left+c*(bw+gap),y:top+r*(bh+10),w:bw,h:bh,color,hp:r===0?2:1,alive:true,hack:false});
+   bricks.push({x:left+c*(bw+gap),y:top+r*rowStep,w:bw,h:bh,color,hp:r===0?2:1,alive:true,hack:false});
   }
  }
 }
