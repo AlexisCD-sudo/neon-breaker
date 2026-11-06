@@ -17,7 +17,6 @@ body{display:block;position:fixed;inset:0}
 .stats span{color:#fff}
 .stats b{color:#4cf3ff;margin-left:3px;text-shadow:0 0 6px #35eaff}
 .stats b.frenzy{color:#ff39d4;text-shadow:0 0 10px #ff39d4}
-/* El canvas ara està centrat per defecte i limitat a una mida raonable */
 #game{display:block;touch-action:none;cursor:crosshair;background:#050510;box-shadow:0 0 40px rgba(53,234,255,.2);border:1px solid rgba(53,234,255,.3);border-radius:8px}
 #overlay{position:absolute;inset:0;display:grid;place-items:center;background:radial-gradient(ellipse at center,rgba(14,13,45,.82),rgba(2,2,12,.94));text-align:center;padding:20px;z-index:10;overflow-y:auto}
 .panel{max-width:560px;width:100%;padding:clamp(18px,3vw,34px);border:1px solid rgba(70,235,255,.45);border-radius:18px;background:rgba(6,10,30,.88);box-shadow:0 0 35px #0bd4ff33,inset 0 0 25px #a22cff18;margin:auto}
@@ -312,12 +311,14 @@ function resetMainPanel(){
 
 // ===== JOC =====
 let W=960,H=600,dpr=1,scale=1,last=0,raf=0,state='ready',score=0,lives=3,level=1,keys={};
-let paddle,balls=[],bricks=[],drops=[],lasers=[],bombs=[],stars=[],shockwaves=[],frenzyFx=[],matrix=[];
+let paddle=null; // Inicialitzem explícitament a null
+let balls=[],bricks=[],drops=[],lasers=[],bombs=[],stars=[],shockwaves=[],frenzyFx=[],matrix=[];
 let shake=0,shakeX=0,shakeY=0;
 let combo=1,comboTimer=0,frenzy=0;
 let pendingScore=0;
 let lastResizeTime=0;
 let lastBombAt=0;
+let isGameInitialized = false; // Flag per evitar crides prematures
 const COLORS=['#21dfff','#21f5c5','#8cff39','#e8f43c','#ffad35','#ff4c9c','#bd5cff'];
 const rand=(a,b)=>a+Math.random()*(b-a);
 
@@ -343,7 +344,7 @@ function addParticles(x,y,color,n=18,spd=5){
 function addShockwave(x,y,color,maxR=80){if(shockwaves.length<20)shockwaves.push({x,y,r:5,maxR,color,life:1})}
 function addFrenzyFx(){if(frenzyFx.length<40)frenzyFx.push({x:rand(0,W),y:rand(0,H),life:rand(20,50),max:50,color:Math.random()<.5?'#ff39d4':'#35eaff'})}
 
-// ===== RESIZE ADAPTATIU (Ara limita la mida a l'ordinador) =====
+// ===== RESIZE =====
 function resize(){
  const now=performance.now();
  if(now-lastResizeTime<100)return;
@@ -354,28 +355,18 @@ function resize(){
  const hudH=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--hud-h'))||52;
  const availH=Math.max(200,vh-hudH);
  
- // Màxim de 600px d'amplada a l'ordinador perquè no es vegi gegant i vagi fluid
  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || vw < 800;
- let maxWidth = isMobile ? vw : 540; // 540px d'ample màxim a desktop (vertical/columna)
+ let maxWidth = isMobile ? vw : 540;
  
  const MAX_ASPECT=16/9,MIN_ASPECT=3/4;
  const screenAspect=vw/availH;
  let cw,ch;
  
- // Calculem l'amplada i alçada segons l'espai
- if(screenAspect>MAX_ASPECT){
-  ch=availH; cw=Math.round(ch*MAX_ASPECT);
- }else if(screenAspect<MIN_ASPECT){
-  cw=vw; ch=Math.round(cw/MIN_ASPECT);
- }else{
-  cw=vw; ch=availH;
- }
+ if(screenAspect>MAX_ASPECT){ ch=availH; cw=Math.round(ch*MAX_ASPECT); }
+ else if(screenAspect<MIN_ASPECT){ cw=vw; ch=Math.round(cw/MIN_ASPECT); }
+ else{ cw=vw; ch=availH; }
  
- // Apliquem el límit de amplada per a escriptori
- if (cw > maxWidth && !isMobile) {
-   ch = Math.round(ch * (maxWidth / cw));
-   cw = maxWidth;
- }
+ if (cw > maxWidth && !isMobile) { ch = Math.round(ch * (maxWidth / cw)); cw = maxWidth; }
  
  canvas.width=Math.round(cw*dpr);canvas.height=Math.round(ch*dpr);
  canvas.style.width=cw+'px';canvas.style.height=ch+'px';
@@ -383,17 +374,46 @@ function resize(){
  W=960;H=Math.max(380,Math.round(W*(ch/cw)));
  scale=canvas.width/W;
  ctx.setTransform(scale,0,0,scale,0,0);
- makeStars();initMatrix();
+ 
+ if(isGameInitialized) {
+   makeStars();
+   initMatrix();
+ }
 }
+
 let ro=null;
 function setupResize(){
  if(ro)ro.disconnect();
- ro=new ResizeObserver(()=>{resize();if(state==='ready'||state==='over'){buildBricks();resetBall();draw()}});
+ ro=new ResizeObserver(()=>{
+   resize();
+   // Només reiniciem si el joc ja s'ha inicialitzat del tot
+   if(isGameInitialized && (state==='ready'||state==='over')){
+     buildBricks();
+     resetBall();
+     draw();
+   }
+ });
  ro.observe(document.documentElement);
 }
 setupResize();
-window.addEventListener('resize',()=>{resize();if(state==='ready'||state==='over'){buildBricks();resetBall();draw()}});
-window.addEventListener('orientationchange',()=>{setTimeout(()=>{resize();if(state==='ready'||state==='over'){buildBricks();resetBall();draw()}},350)});
+window.addEventListener('resize',()=>{
+ resize();
+ if(isGameInitialized && (state==='ready'||state==='over')){
+   buildBricks();
+   resetBall();
+   draw();
+ }
+});
+window.addEventListener('orientationchange',()=>{
+ setTimeout(()=>{
+   resize();
+   if(isGameInitialized && (state==='ready'||state==='over')){
+     buildBricks();
+     resetBall();
+     draw();
+   }
+ }, 350);
+});
 
 function makeStars(){stars=Array.from({length:60},()=>({x:rand(0,W),y:rand(0,H),a:rand(.15,.7),s:rand(.4,1.6),spd:rand(.2,1)}))}
 function initMatrix(){
@@ -435,9 +455,9 @@ function makeBall(x,y,vx,vy,type='normal'){
  return {...base,r:rand(6,11),glow:'#28eaff'};
 }
 
-// ARREGLAT: Protecció per si la pala encara no existeix
 function resetBall(){
- if(!paddle) return;
+ // Doble protecció: si paddle no existeix o no té coordenades, sortim
+ if(!paddle || paddle.x === undefined) return;
  balls=[makeBall(paddle.x+paddle.w/2,paddle.y-13,rand(-3,3),-6-level*.35,'normal')];
 }
 
@@ -901,14 +921,17 @@ startBtn.addEventListener('click',()=>{
 
 function init(){
  resize();
+ makeStars();
+ initMatrix();
  paddle=newPaddle();
  buildBricks();
  resetBall();
  bestEl.textContent=best;
+ isGameInitialized = true; // Marquem que el joc ja està a punt
  draw();
 }
+// Executem init de forma segura
 requestAnimationFrame(()=>requestAnimationFrame(init));
-setTimeout(()=>{resize();if(state==='ready'){buildBricks();resetBall();draw()}},300);
 </script>
 </body>
 </html>
