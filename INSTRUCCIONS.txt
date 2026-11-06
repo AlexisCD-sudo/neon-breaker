@@ -1,0 +1,23 @@
+NEON BREAKER OVERDRIVE — ACTUALITZACIÓ PWA
+
+CONTINGUT
+- index.html: joc actualitzat. Manté Firebase, puntuacions, armes, FRENZY, drons i acceleració de les boles.
+- manifest.webmanifest: dades d'instal·lació com a app.
+- sw.js: service worker i memòria cau bàsica de l'aplicació.
+- icons/: icones Android/iPhone.
+
+PUBLICACIÓ A GITHUB PAGES
+1. Descomprimeix aquest ZIP.
+2. Puja TOTS els fitxers i la carpeta icons/ a l'arrel del repositori neon-breaker.
+3. Substitueix l'index.html anterior pel nou.
+4. Fes commit i push. No canviïs la configuració de Firebase.
+5. Espera que GitHub Pages publiqui els canvis i obre el joc amb HTTPS.
+
+INSTAL·LAR
+- Android (Chrome): obre el joc i tria "Instal·la l'aplicació" o "Afegeix a la pantalla d'inici" al menú del navegador.
+- iPhone (Safari): obre el joc, prem Compartir i tria "Afegir a la pantalla d'inici".
+
+NOTES
+- La instal·lació PWA necessita HTTPS; GitHub Pages ja serveix el lloc amb HTTPS.
+- iPhone/iPad no mostren sempre un bàner automàtic: cal fer-ho des del menú Compartir de Safari.
+- La memòria cau permet recuperar la carcassa del joc sense connexió, però les funcions de rècords globals de Firebase necessiten internet.

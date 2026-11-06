@@ -4,7 +4,15 @@
 <!-- Neon Breaker: acceleració de pilota recuperada amb límits màxims ampliats -->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<meta name="theme-color" content="#000000">
+<meta name="theme-color" content="#08091b">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Neon Breaker">
+<meta name="application-name" content="Neon Breaker">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icons/icon-192.png">
+<link rel="icon" type="image/png" href="./icons/icon-192.png">
 <title>NEON BREAKER // OVERDRIVE</title>
 <style>
 :root{color-scheme:dark;--cyan:#35eaff;--pink:#ff39d4;--bg:#000;--hud-h:52px}
@@ -29,6 +37,7 @@ button:active{transform:scale(.97)}
 button.ghost{background:transparent;color:#aaf8ff;border:1px solid #36eaff66;box-shadow:none}
 button.ghost:hover{background:rgba(54,234,255,.1)}
 button:disabled{opacity:.5;cursor:wait}
+.pause-btn{position:absolute;left:clamp(6px,1.5vw,16px);top:calc(var(--hud-h) + 6px);z-index:7;padding:5px 11px;margin:0;min-width:42px;font-size:14px;line-height:1.2;letter-spacing:0;background:rgba(24,40,70,.9);color:#aaf8ff;border:1px solid #36eaff88;box-shadow:0 0 12px #28eaff33}
 .sound{position:absolute;right:clamp(6px,1.5vw,16px);top:calc(var(--hud-h) + 6px);padding:5px 10px;font-size:9px;letter-spacing:.06em;background:rgba(24,40,70,.85);color:#aaf8ff;border:1px solid #36eaff66;box-shadow:0 0 12px #28eaff33;z-index:6}
 .small{font-size:10px;color:#8298b7;margin-top:10px;line-height:1.6}
 .hidden{display:none!important}
@@ -54,13 +63,14 @@ button:disabled{opacity:.5;cursor:wait}
 .rec-name-row input:focus{border-color:#4cf3ff;box-shadow:0 0 12px #35eaff66}
 .rec-name-row input::placeholder{color:#5a7090}
 .rec-badge{display:inline-block;padding:3px 10px;border-radius:999px;background:linear-gradient(90deg,#40f4ff,#f24bdb);color:#04101a;font-weight:900;font-size:10px;letter-spacing:.1em;margin-bottom:10px}
-@media(max-width:700px){:root{--hud-h:42px}.brand{letter-spacing:.06em;font-size:9px}.stats{gap:5px;font-size:7.5px}.sound{font-size:8px;padding:4px 8px;top:calc(var(--hud-h) + 4px)}.panel{padding:18px}p{font-size:12px}.rec-list li{font-size:12px;padding:7px 10px}#game{border-radius:0;border:none;box-shadow:none}}
+@media(max-width:700px){:root{--hud-h:42px}.brand{letter-spacing:.06em;font-size:9px}.stats{gap:5px;font-size:7.5px}.sound{font-size:8px;padding:4px 8px;top:calc(var(--hud-h) + 4px)}.pause-btn{top:calc(var(--hud-h) + 4px);padding:4px 10px;font-size:13px}.panel{padding:18px}p{font-size:12px}.rec-list li{font-size:12px;padding:7px 10px}#game{border-radius:0;border:none;box-shadow:none}}
 @media (orientation:landscape) and (max-height:600px){
   :root{--hud-h:30px}
   .brand{font-size:10px;letter-spacing:.06em}
   .stats{font-size:9px;gap:8px;letter-spacing:.03em}
   .stats b{margin-left:2px}
   .sound{font-size:8px;padding:3px 7px;top:calc(var(--hud-h) + 3px)}
+  .pause-btn{top:calc(var(--hud-h) + 3px);padding:3px 9px;font-size:12px}
   .panel{padding:14px;max-width:640px}
   h1{font-size:clamp(22px,4.5vw,40px)}
   #subtitle{font-size:9px;margin-bottom:10px}
@@ -87,6 +97,7 @@ button:disabled{opacity:.5;cursor:wait}
 
 <canvas id="game" aria-label="Neon Breaker Overdrive"></canvas>
 
+<button id="pauseBtn" class="pause-btn" aria-label="Pausar joc" title="Pausar">Ⅱ</button>
 <button id="sound" class="sound">♫ SO: ON</button>
 
 <div id="overlay">
@@ -228,7 +239,7 @@ async function getGlobalTop(){
 // ===== UI =====
 const canvas=document.getElementById('game'),ctx=canvas.getContext('2d',{alpha:false,desynchronized:true});
 const wrap=document.getElementById('wrap'),overlay=document.getElementById('overlay');
-const scoreEl=document.getElementById('score'),livesEl=document.getElementById('lives'),levelEl=document.getElementById('level'),bestEl=document.getElementById('best'),comboEl=document.getElementById('combo'),soundBtn=document.getElementById('sound');
+const scoreEl=document.getElementById('score'),livesEl=document.getElementById('lives'),levelEl=document.getElementById('level'),bestEl=document.getElementById('best'),comboEl=document.getElementById('combo'),soundBtn=document.getElementById('sound'),pauseBtn=document.getElementById('pauseBtn');
 const panelMain=document.getElementById('panelMain'),panelRecords=document.getElementById('panelRecords'),panelSave=document.getElementById('panelSave');
 const recContainer=document.getElementById('recContainer'),nameInput=document.getElementById('nameInput'),saveScore=document.getElementById('saveScore'),saveBadge=document.getElementById('saveBadge');
 const tabGlobal=document.getElementById('tabGlobal'),tabLocal=document.getElementById('tabLocal');
@@ -471,6 +482,20 @@ function resetBall(){
  balls=[makeBall(paddle.x+paddle.w/2,paddle.y-13,rand(-2.8,2.8),-Math.min(8.2,6.2+level*.025),'normal')];
 }
 
+function pixelArt(lines,rows,cols){
+ return Array.from({length:rows},(_,r)=>Array.from({length:cols},(_,c)=>{
+  const rr=Math.min(lines.length-1,Math.floor(r*lines.length/rows));
+  const cc=Math.min(lines[0].length-1,Math.floor(c*lines[0].length/cols));
+  return lines[rr][cc]==='#';
+ }));
+}
+const PIXEL_ART={
+ smiley:['...#####...','..#######..','.#########.','###..#..###','###..#..###','###########','##.......##','.##.....##.','.#########.','..#######..'],
+ anarchy:['...#####...','..##...##..','.##.....##.','##..###..##','##.##.##.##','###########','##.......##','##.......##','.##.....##.','..#######..'],
+ invertedCross:['....###....','....###....','....###....','....###....','....###....','....###....','....###....','###########','###########','....###....'],
+ skull:['...#####...','..#######..','.#########.','##.##.##.##','##.##.##.##','###########','.#########.','..#######..','...##.##...','..##...##..'],
+ lightning:['......##...','.....##....','....##.....','...######..','......##...','.....##....','....##.....','...##......','..##.......','.##........']
+};
 const PATTERNS={
  rect:(rows,cols)=>{const p=[];for(let r=0;r<rows;r++){p.push([]);for(let c=0;c<cols;c++)p[r].push(true)}return p},
  pyramid:(rows,cols)=>{const p=[];for(let r=0;r<rows;r++){p.push([]);const half=Math.floor(cols/2);const width=Math.min(cols,Math.floor((r+1)*cols/rows)+2);const start=half-Math.floor(width/2);for(let c=0;c<cols;c++)p[r].push(c>=start&&c<start+width)}return p},
@@ -488,7 +513,12 @@ const PATTERNS={
  },
  spaceship:(rows,cols)=>{const p=[];for(let r=0;r<rows;r++){p.push([]);for(let c=0;c<cols;c++){const half=Math.floor(cols/2);const noseWidth=Math.max(1,Math.floor((rows-r)*cols/(rows*2.2)));const inNose=c>=half-noseWidth&&c<half+noseWidth;const isWing=r>rows*.5&&(c<2||c>cols-3);const isBody=r<rows*.75&&inNose;p[r].push(isBody||isWing)}}return p},
  checker:(rows,cols)=>{const p=[];for(let r=0;r<rows;r++){p.push([]);for(let c=0;c<cols;c++)p[r].push((r+c)%2===0)}return p},
- cross:(rows,cols)=>{const p=[];const cr=Math.floor(rows/2),cc=Math.floor(cols/2);for(let r=0;r<rows;r++){p.push([]);for(let c=0;c<cols;c++)p[r].push(r===cr||r===cr-1||c===cc||c===cc-1)}return p}
+ cross:(rows,cols)=>{const p=[];const cr=Math.floor(rows/2),cc=Math.floor(cols/2);for(let r=0;r<rows;r++){p.push([]);for(let c=0;c<cols;c++)p[r].push(r===cr||r===cr-1||c===cc||c===cc-1)}return p},
+ smiley:(rows,cols)=>pixelArt(PIXEL_ART.smiley,rows,cols),
+ anarchy:(rows,cols)=>pixelArt(PIXEL_ART.anarchy,rows,cols),
+ invertedCross:(rows,cols)=>pixelArt(PIXEL_ART.invertedCross,rows,cols),
+ skull:(rows,cols)=>pixelArt(PIXEL_ART.skull,rows,cols),
+ lightning:(rows,cols)=>pixelArt(PIXEL_ART.lightning,rows,cols)
 };
 
 function buildBricks(){
@@ -502,7 +532,7 @@ function buildBricks(){
  // Separem les files proporcionalment a l'alçada real del camp.
  const targetBottom=Math.min(H*.48,H-260);
  const rowStep=rows>1?Math.max(bh+9,Math.min(88,(targetBottom-top-bh)/(rows-1))):bh+9;
- const patternNames=['rect','pyramid','diamond','wave','face','spaceship','checker','cross','heart'];
+ const patternNames=['rect','pyramid','diamond','wave','smiley','spaceship','checker','anarchy','heart','invertedCross','skull','lightning','cross'];
  const patIdx=(level-1)%patternNames.length;
  const pattern=PATTERNS[patternNames[patIdx]](rows,cols);
  for(let r=0;r<rows;r++){
@@ -511,14 +541,18 @@ function buildBricks(){
    const isHack=(r>=1&&r<=rows-2&&Math.random()<.06);
    const color=isHack?'#ffd700':COLORS[Math.min(COLORS.length-1,Math.floor(c/2)+Math.floor(r/2))];
    const hp=r===0?2:(isHack?3:1);
-   bricks.push({x:left+c*(bw+gap),y:top+r*rowStep,w:bw,h:bh,color,hp,alive:true,hack:isHack});
+   const shapes=['hex','diamond','circle'];
+   const shape=level>=4&&((r*cols+c+level)%7===0)?shapes[(r+c+level)%shapes.length]:'rect';
+   bricks.push({x:left+c*(bw+gap),y:top+r*rowStep,w:bw,h:bh,color,hp,alive:true,hack:isHack,shape});
   }
  }
  if(bricks.length<8){
   bricks=[];
   for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){
    const color=COLORS[Math.min(COLORS.length-1,Math.floor(c/2)+Math.floor(r/2))];
-   bricks.push({x:left+c*(bw+gap),y:top+r*rowStep,w:bw,h:bh,color,hp:r===0?2:1,alive:true,hack:false});
+   const shapes=['hex','diamond','circle'];
+   const shape=level>=4&&((r*cols+c+level)%7===0)?shapes[(r+c+level)%shapes.length]:'rect';
+   bricks.push({x:left+c*(bw+gap),y:top+r*rowStep,w:bw,h:bh,color,hp:r===0?2:1,alive:true,hack:false,shape});
   }
  }
  // Cada dos nivells apareix un únic maó d'armament; alternem les dues armes
@@ -576,7 +610,8 @@ function noiseBurst(duration=.15,volume=.05){
 }
 soundBtn.addEventListener('click',()=>{soundOn=!soundOn;soundBtn.textContent=soundOn?'♫ SO: ON':'♫ SO: OFF';if(soundOn)beep(660,.09,'triangle')});
 
-function pause(){if(state==='playing'){state='paused';titleEl.innerHTML='PAUSA';messageEl.textContent='Prem el botó per continuar.';startBtn.textContent='CONTINUAR';showPanel('main')}else if(state==='paused'){state='playing';hideOverlay();last=performance.now();raf=requestAnimationFrame(loop)}}
+function pause(){if(state==='playing'){state='paused';titleEl.innerHTML='PAUSA';messageEl.textContent='Prem CONTINUAR per reprendre la partida.';startBtn.textContent='CONTINUAR';showPanel('main')}else if(state==='paused'){state='playing';hideOverlay();last=performance.now();raf=requestAnimationFrame(loop)}}
+pauseBtn.addEventListener('click',()=>{if(state==='playing'||state==='paused')pause()});
 
 function addCombo(n=1){
  combo=Math.min(30,combo+n);comboTimer=150;
@@ -1031,8 +1066,8 @@ function draw(){
   ctx.shadowColor=b.color;ctx.shadowBlur=isHack?18:10;
   const g=ctx.createLinearGradient(b.x,b.y,b.x,b.y+b.h);
   g.addColorStop(0,'#ffffff66');g.addColorStop(.25,b.color);g.addColorStop(1,b.color+'99');
-  ctx.fillStyle=g;roundRect(b.x,b.y,b.w,b.h,5);ctx.fill();
-  ctx.shadowBlur=0;ctx.strokeStyle=b.color;ctx.globalAlpha=.9;ctx.lineWidth=1.4;roundRect(b.x+1,b.y+1,b.w-2,b.h-2,4);ctx.stroke();
+  ctx.fillStyle=g;brickPath(b);ctx.fill();
+  ctx.shadowBlur=0;ctx.strokeStyle=b.color;ctx.globalAlpha=.9;ctx.lineWidth=1.4;brickPath(b,1);ctx.stroke();
   if(isHack){
    ctx.fillStyle='#fff';ctx.globalAlpha=.9;ctx.font='bold 12px monospace';ctx.textAlign='center';
    ctx.fillText('</>',b.x+b.w/2,b.y+b.h/2+4);
@@ -1215,6 +1250,17 @@ function drawDroneEncounter(){
 }
 
 function roundRect(x,y,w,h,r){ctx.beginPath();ctx.roundRect(x,y,w,h,r)}
+function brickPath(b,inset=0){
+ const x=b.x+inset,y=b.y+inset,w=b.w-inset*2,h=b.h-inset*2;
+ ctx.beginPath();
+ if(b.shape==='diamond'){
+  ctx.moveTo(x+w/2,y);ctx.lineTo(x+w,y+h/2);ctx.lineTo(x+w/2,y+h);ctx.lineTo(x,y+h/2);ctx.closePath();
+ }else if(b.shape==='hex'){
+  const cut=w*.19;ctx.moveTo(x+cut,y);ctx.lineTo(x+w-cut,y);ctx.lineTo(x+w,y+h/2);ctx.lineTo(x+w-cut,y+h);ctx.lineTo(x+cut,y+h);ctx.lineTo(x,y+h/2);ctx.closePath();
+ }else if(b.shape==='circle'){
+  ctx.ellipse(x+w/2,y+h/2,w/2,h/2,0,0,Math.PI*2);
+ }else ctx.roundRect(x,y,w,h,5);
+}
 
 function loop(t){
  if(state!=='playing')return;
@@ -1261,6 +1307,11 @@ function init(){
 }
 // Executem init de forma segura
 requestAnimationFrame(()=>requestAnimationFrame(init));
+
+// Instal·lació com a PWA (Android i iPhone compatible amb Afegir a pantalla d'inici).
+if('serviceWorker' in navigator && (location.protocol==='https:' || location.hostname==='localhost')){
+ navigator.serviceWorker.register('./sw.js').catch(err=>console.warn('PWA: no s’ha pogut registrar el service worker',err));
+}
 </script>
 </body>
 </html>
