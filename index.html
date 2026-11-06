@@ -317,7 +317,7 @@ function resetMainPanel(){
 // ===== JOC =====
 let W=960,H=600,dpr=1,scale=1,last=0,raf=0,state='ready',score=0,lives=3,level=1,keys={};
 let paddle=null; // Inicialitzem explícitament a null
-let balls=[],bricks=[],drops=[],lasers=[],bombs=[],beams=[],bombShots=[],drones=[],stars=[],shockwaves=[],frenzyFx=[],matrix=[];
+let balls=[],bricks=[],drops=[],lasers=[],bombs=[],beams=[],bombShots=[],drones=[],enemyStars=[],stars=[],shockwaves=[],frenzyFx=[],matrix=[];
 let encounter=null;
 let shake=0,shakeX=0,shakeY=0;
 let combo=1,comboTimer=0,frenzy=0;
@@ -519,23 +519,22 @@ function buildBricks(){
    bricks.push({x:left+c*(bw+gap),y:top+r*rowStep,w:bw,h:bh,color,hp:r===0?2:1,alive:true,hack:false});
   }
  }
- // Cada cinc nivells apareixen dos maons d'armament garantits.
- if(level%5===0){
+ // Cada dos nivells apareix un únic maó d'armament; alternem les dues armes
+ // perquè surtin en nivells diferents i no saturin la partida.
+ if(level>1 && level%2===0){
   const candidates=bricks.filter(b=>b.alive&&!b.hack).sort((a,b)=>
    (Math.abs(a.x+a.w/2-W*.5)+Math.abs(a.y-top-rowStep*2))-
    (Math.abs(b.x+b.w/2-W*.5)+Math.abs(b.y-top-rowStep*2))
   );
-  const weaponTypes=['longlaser','bombshot'];
-  weaponTypes.forEach((type,i)=>{
-   const brick=candidates[i];
-   if(brick){brick.weaponType=type;brick.hp=Math.max(1,brick.hp);brick.color=type==='longlaser'?'#42f5ff':'#ff8a32'}
-  });
+  const weaponType=(Math.floor(level/2)%2===1)?'longlaser':'bombshot';
+  const brick=candidates[Math.min(candidates.length-1,Math.floor(candidates.length/2))];
+  if(brick){brick.weaponType=weaponType;brick.hp=Math.max(1,brick.hp);brick.color=weaponType==='longlaser'?'#42f5ff':'#ff8a32'}
  }
 }
 
 function startGame(){
  score=0;lives=3;level=1;combo=1;comboTimer=0;frenzy=0;paddle=newPaddle();
- drops=[];lasers=[];bombs=[];beams=[];bombShots=[];drones=[];encounter=null;shockwaves=[];frenzyFx=[];shake=0;
+ drops=[];lasers=[];bombs=[];beams=[];bombShots=[];drones=[];enemyStars=[];encounter=null;shockwaves=[];frenzyFx=[];shake=0;
  particlePool.forEach(p=>p.active=false);
  particleCount=0;
  buildBricks();resetBall();syncHud();state='playing';hideOverlay();
@@ -708,23 +707,51 @@ function firePlayerWeapon(){
 
 function beginDroneEncounter(){
  const cycle=Math.max(1,Math.floor(level/10));
- encounter={phase:'glitch',timer:60,cycle};
- bricks=[];balls=[];drops=[];lasers=[];bombs=[];beams=[];bombShots=[];drones=[];
+ encounter={phase:'glitch',timer:60,cycle,invuln:0,hitFlash:0};
+ bricks=[];balls=[];drops=[];lasers=[];bombs=[];beams=[];bombShots=[];drones=[];enemyStars=[];
  if(paddle){paddle.weapon=null;paddle.weaponTimer=0;paddle.laser=0;paddle.cooldown=0;paddle.target=W/2;paddle.x=W/2-paddle.w/2}
  shake=34;noiseBurst(.28,.08);beep(95,.35,'sawtooth',.06);
 }
 
 function spawnDroneWave(){
  const cycle=encounter.cycle;
- const count=Math.min(10,2+cycle);
- const hp=1+Math.floor((cycle-1)/2);
+ // La prima ondata resta amable; la pressió creix gradualment cada deu nivells.
+ const count=Math.min(9,2+Math.floor((cycle-1)*.8));
+ const hp=cycle<3?1:1+Math.floor((cycle-1)/3);
  for(let i=0;i<count;i++){
-  const spacing=W/(count+1);
-  drones.push({x:spacing*(i+1),y:115+(i%2)*58,baseY:115+(i%2)*58,w:62,h:34,hp,maxHp:hp,phase:i*1.7,speed:1+cycle*.16,range:Math.max(90,W*.34),alive:true});
+  const x=rand(90,W-90),y=rand(105,Math.max(150,H*.62));
+  const speed=4.4+Math.min(2.0,(cycle-1)*.2);
+  const angle=rand(0,Math.PI*2);
+  drones.push({x,y,w:62,h:38,hp,maxHp:hp,phase:rand(0,Math.PI*2),vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed*.78,speed,alive:true,fireTimer:rand(100,220)});
  }
  encounter.phase='drones';
  encounter.timer=0;
  beep(520,.18,'triangle',.04);
+}
+
+function loseLifeToDroneStar(){
+ if(!encounter || encounter.invuln>0)return;
+ lives--;syncHud();resetCombo();
+ encounter.invuln=95;encounter.hitFlash=30;
+ enemyStars=[];
+ addParticles(paddle.x+paddle.w/2,paddle.y,'#ff243f',38,9);
+ addShockwave(paddle.x+paddle.w/2,paddle.y,'#ff243f',150);
+ shake=Math.min(40,shake+20);noiseBurst(.22,.07);beep(95,.28,'sawtooth',.05);
+ if(lives<=0){
+  state='over';pendingScore=score;
+  const local=getLocalRecords();
+  const qualifies=score>0&&(local.length<MAX_RECORDS||score>local[local.length-1].points);
+  if(qualifies){
+   saveScore.textContent=score;
+   saveBadge.textContent=score>best?'🏆 NOU RÈCORD!':'ENTRA AL TOP';
+   nameInput.value=localStorage.getItem('neonBreakerLastName')||'';
+   saveStatus.textContent='El rècord es desarà al rànquing global si Firebase està ben configurat.';
+   showPanel('save');setTimeout(()=>nameInput.focus(),200);
+  }else{
+   titleEl.innerHTML='GAME OVER';messageEl.textContent=`Puntuació: ${score} · Rècord: ${best}`;
+   startBtn.textContent='REINTENTAR';showPanel('main');
+  }
+ }
 }
 
 function updateDroneEncounter(f){
@@ -733,35 +760,70 @@ function updateDroneEncounter(f){
   encounter.timer-=f;
   if(encounter.timer<=0)spawnDroneWave();
  }else{
+  if(encounter.invuln>0)encounter.invuln-=f;
+  if(encounter.hitFlash>0)encounter.hitFlash-=f;
   if(keys.ArrowLeft||keys.a)paddle.target-=paddle.speed*f*5;
   if(keys.ArrowRight||keys.d)paddle.target+=paddle.speed*f*5;
   paddle.x+=(paddle.target-paddle.w/2-paddle.x)*Math.min(1,.45*f);
   paddle.x=Math.max(12,Math.min(W-paddle.w-12,paddle.x));
   if(paddle.cooldown>0)paddle.cooldown-=f;
-  const now=performance.now()*.001;
   for(const d of drones){
    if(!d.alive)continue;
-   d.phase+=.018*d.speed*f;
-   d.x=W/2+Math.sin(d.phase)*d.range;
-   d.y=d.baseY+Math.sin(d.phase*1.65)*18;
+   // Volen per tota l'arena, rebotant als límits en lloc de quedar-se en una franja.
+   d.x+=d.vx*f;d.y+=d.vy*f;
+   const minX=48,maxX=W-48,minY=92,maxY=Math.max(150,H*.68);
+   if(d.x<minX){d.x=minX;d.vx=Math.abs(d.vx)}
+   if(d.x>maxX){d.x=maxX;d.vx=-Math.abs(d.vx)}
+   if(d.y<minY){d.y=minY;d.vy=Math.abs(d.vy)}
+   if(d.y>maxY){d.y=maxY;d.vy=-Math.abs(d.vy)}
+   // Petites variacions de trajectòria perquè els drons semblin pilotats.
+   d.phase+=.025*f;
+   d.vx+=Math.sin(d.phase*1.7)*.012*f;d.vy+=Math.cos(d.phase*1.3)*.01*f;
+   const maxSpeed=d.speed*1.18,vel=Math.hypot(d.vx,d.vy);
+   if(vel>maxSpeed){d.vx=d.vx/vel*maxSpeed;d.vy=d.vy/vel*maxSpeed}
   }
   for(let i=lasers.length-1;i>=0;i--){
-   const l=lasers[i];l.y+=l.vy*f;
-   let hit=false;
+   const l=lasers[i];l.y+=l.vy*f;let hit=false;
    for(const d of drones){
     if(!d.alive)continue;
     if(l.x>=d.x-d.w/2&&l.x<=d.x+d.w/2&&l.y>=d.y-d.h/2&&l.y<=d.y+d.h/2){
-     d.hp--;hit=true;addParticles(l.x,l.y,d.hp<=0?'#ffb347':'#42f5ff',12,5);
-     addShockwave(l.x,l.y,d.hp<=0?'#ff8a32':'#42f5ff',d.hp<=0?75:35);
-     beep(d.hp<=0?180:680,.06,d.hp<=0?'sawtooth':'square',.025);
-     if(d.hp<=0){d.alive=false;shake=Math.min(30,shake+5);}
+     d.hp--;hit=true;
+     addParticles(l.x,l.y,d.hp<=0?'#ffb347':'#42f5ff',d.hp<=0?34:14,d.hp<=0?9:5);
+     if(d.hp<=0){
+      d.alive=false;
+      // Explosió de dron molt més grossa que la d'un maó.
+      addShockwave(d.x,d.y,'#ff243f',190);addShockwave(d.x,d.y,'#ff8a32',125);
+      addParticles(d.x,d.y,'#ff243f',76,13);addParticles(d.x,d.y,'#ffcc55',42,9);
+      shake=Math.min(42,shake+13);noiseBurst(.18,.06);beep(125,.24,'sawtooth',.05);
+      // Cada dron deixa una o dues estrelles vermelles hostils.
+      const starCount=Math.random()<.5?1:2;
+      for(let n=0;n<starCount;n++){
+       const sx=d.x+rand(-12,12),sy=d.y+rand(-8,8);
+       const aimX=(paddle.x+paddle.w/2-sx);
+       enemyStars.push({x:sx,y:sy,vx:Math.max(-2.4,Math.min(2.4,aimX*.002))+rand(-.55,.55),vy:2.05+Math.min(1.0,(encounter.cycle-1)*.09)+rand(0,.45),r:13,rot:rand(0,Math.PI),spin:rand(-.12,.12),life:900});
+      }
+     }else{
+      addShockwave(l.x,l.y,'#42f5ff',38);beep(680,.06,'square',.025);
+     }
      break;
     }
    }
    if(hit||l.y<-20)lasers.splice(i,1);
   }
+  // Les estrelles busquen la pala suaument i són letals si hi impacten.
+  for(let i=enemyStars.length-1;i>=0;i--){
+   const s=enemyStars[i];
+   const targetX=paddle.x+paddle.w/2;
+   s.vx+=(Math.sign(targetX-s.x)*.018*f);
+   s.vx=Math.max(-3.2,Math.min(3.2,s.vx));
+   s.x+=s.vx*f;s.y+=s.vy*f;s.rot+=s.spin*f;s.life-=f;
+   if(encounter.invuln<=0&&s.y+s.r>=paddle.y&&s.y-s.r<=paddle.y+paddle.h&&s.x>=paddle.x-s.r&&s.x<=paddle.x+paddle.w+s.r){
+    enemyStars.splice(i,1);loseLifeToDroneStar();if(state==='over')return;continue;
+   }
+   if(s.y>H+30||s.life<=0||s.x<-40||s.x>W+40)enemyStars.splice(i,1);
+  }
   if(drones.length&&drones.every(d=>!d.alive)){
-   encounter=null;drones=[];lasers=[];buildBricks();resetBall();
+   encounter=null;drones=[];enemyStars=[];lasers=[];buildBricks();resetBall();
    addParticles(W/2,H/3,'#42f5ff',55,9);addShockwave(W/2,H/3,'#42f5ff',260);shake=24;
    beep(880,.16,'triangle',.05);
   }
@@ -1085,7 +1147,7 @@ function drawDroneEncounter(){
   ctx.shadowColor='#ff39d4';ctx.shadowBlur=22;
   ctx.fillStyle='#24123e';ctx.strokeStyle='#ff39d4';ctx.lineWidth=2;
   ctx.beginPath();ctx.moveTo(-d.w*.48,0);ctx.lineTo(-d.w*.28,-d.h*.42);ctx.lineTo(-d.w*.08,-d.h*.25);ctx.lineTo(d.w*.08,-d.h*.25);ctx.lineTo(d.w*.28,-d.h*.42);ctx.lineTo(d.w*.48,0);ctx.lineTo(d.w*.28,d.h*.42);ctx.lineTo(-d.w*.28,d.h*.42);ctx.closePath();ctx.fill();ctx.stroke();
-  ctx.shadowColor='#42f5ff';ctx.shadowBlur=14;ctx.fillStyle='#42f5ff';
+  ctx.shadowColor='#ff243f';ctx.shadowBlur=18;ctx.fillStyle='#ff243f';
   ctx.fillRect(-d.w*.2,-3,d.w*.4,6);
   ctx.fillStyle='#fff';ctx.globalAlpha=pulse;ctx.fillRect(-d.w*.08,-2,d.w*.16,4);
   ctx.globalAlpha=1;ctx.strokeStyle='#42f5ff';ctx.lineWidth=1.5;
@@ -1105,6 +1167,21 @@ function drawDroneEncounter(){
   ctx.save();ctx.shadowColor='#42f5ff';ctx.shadowBlur=16;ctx.fillStyle='#fff';ctx.fillRect(l.x-2,l.y,4,19);
   ctx.fillStyle='#42f5ff';ctx.fillRect(l.x-4,l.y+4,8,15);ctx.restore();
  });
+ enemyStars.forEach(s=>{
+  ctx.save();ctx.translate(s.x,s.y);ctx.rotate(s.rot);
+  ctx.shadowColor='#ff1738';ctx.shadowBlur=25;
+  const spikes=10,outer=s.r,inner=s.r*.48;
+  ctx.beginPath();
+  for(let i=0;i<spikes*2;i++){
+   const a=-Math.PI/2+i*Math.PI/spikes,r=i%2===0?outer:inner;
+   const x=Math.cos(a)*r,y=Math.sin(a)*r;
+   if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+  }
+  ctx.closePath();ctx.fillStyle='#d90028';ctx.fill();ctx.strokeStyle='#ff687d';ctx.lineWidth=2;ctx.stroke();
+  ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(0,0,3.2,0,Math.PI*2);ctx.fill();
+  ctx.restore();
+ });
+ if(encounter.invuln>0&&Math.floor(encounter.invuln/6)%2===0){ctx.save();ctx.globalAlpha=.55;ctx.strokeStyle='#ff243f';ctx.lineWidth=4;ctx.shadowColor='#ff243f';ctx.shadowBlur=20;ctx.strokeRect(paddle.x-5,paddle.y-7,paddle.w+10,paddle.h+14);ctx.restore()}
  const alive=drones.filter(d=>d.alive).length;
  ctx.save();ctx.textAlign='center';ctx.font='bold 20px monospace';ctx.fillStyle='#fff';ctx.shadowColor='#ff39d4';ctx.shadowBlur=16;
  ctx.fillText('ELIMINA ELS DRONS',W/2,58);
