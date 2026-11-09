@@ -1,7 +1,6 @@
 <!doctype html>
 <html lang="ca">
 <head>
-<!-- Neon Breaker: acceleració de pilota recuperada amb límits màxims ampliats -->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#08091b">
@@ -341,8 +340,85 @@ const COLORS=['#21dfff','#21f5c5','#8cff39','#e8f43c','#ffad35','#ff4c9c','#bd5c
 const rand=(a,b)=>a+Math.random()*(b-a);
 
 // Estat de la pala durant la fase de drons (a dalt).
-// paddle.yOriginal guarda la Y normal per restaurar-la en sortir de la fase.
 let paddleAtTop=false;
+
+// ===== CACHE DE SPRITES DE DRONS =====
+// Cada dron es dibuixa UNA vegada en un canvas offscreen i després es fa servir drawImage.
+// Això elimina ~250 fillRect amb shadowBlur per dron i frame.
+let droneSpriteCache = { key: '', sprite: null };
+
+function buildDroneSprite(w, h) {
+  const key = Math.round(w) + 'x' + Math.round(h);
+  if (droneSpriteCache.key === key && droneSpriteCache.sprite) return droneSpriteCache.sprite;
+
+  const pad = Math.ceil(w * 0.35);
+  const cw = Math.ceil(w + pad * 2);
+  const ch = Math.ceil(h + pad * 2);
+  const off = document.createElement('canvas');
+  off.width = cw;
+  off.height = ch;
+  const c = off.getContext('2d');
+  c.translate(cw / 2, ch / 2);
+
+  // 1) Halo exterior (gradient radial, sense shadowBlur)
+  const halo = c.createRadialGradient(0, 0, w * 0.25, 0, 0, w * 0.65);
+  halo.addColorStop(0, 'rgba(85,255,176,0.55)');
+  halo.addColorStop(1, 'rgba(85,255,176,0)');
+  c.fillStyle = halo;
+  c.beginPath(); c.arc(0, 0, w * 0.65, 0, Math.PI * 2); c.fill();
+
+  // 2) Cos: hexàgon amb degradat
+  const bodyR = w * 0.42;
+  const grad = c.createLinearGradient(0, -bodyR, 0, bodyR);
+  grad.addColorStop(0, '#a8f5d0');
+  grad.addColorStop(0.45, '#55c98a');
+  grad.addColorStop(1, '#0f3d2a');
+  c.fillStyle = grad;
+  c.strokeStyle = '#0a1f17';
+  c.lineWidth = Math.max(1, w * 0.03);
+  c.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const a = -Math.PI / 2 + i * Math.PI / 3;
+    const x = Math.cos(a) * bodyR;
+    const y = Math.sin(a) * bodyR * 0.9;
+    if (i === 0) c.moveTo(x, y); else c.lineTo(x, y);
+  }
+  c.closePath();
+  c.fill();
+  c.stroke();
+
+  // 3) Espícules: 8 línies + punta
+  c.strokeStyle = '#7dffb8';
+  c.lineWidth = Math.max(1, w * 0.028);
+  for (let i = 0; i < 8; i++) {
+    const a = -Math.PI / 2 + i * Math.PI / 4;
+    const x1 = Math.cos(a) * bodyR * 0.95;
+    const y1 = Math.sin(a) * bodyR * 0.85;
+    const x2 = Math.cos(a) * bodyR * 1.45;
+    const y2 = Math.sin(a) * bodyR * 1.3;
+    c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke();
+    c.fillStyle = '#baffd9';
+    c.beginPath(); c.arc(x2, y2, Math.max(1.2, w * 0.03), 0, Math.PI * 2); c.fill();
+  }
+
+  // 4) Ulls
+  const eyeR = w * 0.08;
+  c.fillStyle = '#f4fff8';
+  c.beginPath(); c.arc(-w * 0.14, -h * 0.04, eyeR, 0, Math.PI * 2); c.fill();
+  c.beginPath(); c.arc(w * 0.14, -h * 0.04, eyeR, 0, Math.PI * 2); c.fill();
+  c.fillStyle = '#07120f';
+  c.beginPath(); c.arc(-w * 0.13, -h * 0.03, eyeR * 0.5, 0, Math.PI * 2); c.fill();
+  c.beginPath(); c.arc(w * 0.15, -h * 0.03, eyeR * 0.5, 0, Math.PI * 2); c.fill();
+
+  // 5) Boca
+  c.fillStyle = '#07120f';
+  c.fillRect(-w * 0.13, h * 0.10, w * 0.26, h * 0.06);
+  c.fillStyle = '#f4fff8';
+  c.fillRect(-w * 0.10, h * 0.11, w * 0.20, h * 0.03);
+
+  droneSpriteCache = { key, sprite: off };
+  return off;
+}
 
 const MAX_PARTICLES=140;
 const particlePool=[];
@@ -768,12 +844,8 @@ function beginDroneEncounter(){
 
 function spawnDroneWave(){
   const cycle=encounter.cycle;
-
-  // Onades ràpides: 3, 4, 5 i després màxim 6 drons.
   const count=cycle===1?3:Math.min(6,2+cycle);
   const hp=Math.min(5,1+cycle);
-
-  // Amb la pala a dalt, els drons volen per la meitat inferior de l'arena.
   const topMin=H*.52;
   const topMax=H-150;
 
@@ -831,22 +903,19 @@ function loseLifeToDroneStar(){
 
 function updateDroneEncounter(f){
  updateMatrix(f);
- // Esclats de codi decoratius al fons.
  encounter.ambientTimer-=f;
  if(encounter.ambientTimer<=0){
-  if(matrixBursts.length<7)matrixBursts.push({x:rand(55,W-55),y:rand(115,H-145),r:8,maxR:rand(55,145),life:1,color:Math.random()<.5?'#20ffad':'#42f5ff',seed:rand(0,Math.PI*2)});
+  if(matrixBursts.length<4)matrixBursts.push({x:rand(55,W-55),y:rand(115,H-145),r:8,maxR:rand(55,145),life:1,color:Math.random()<.5?'#20ffad':'#42f5ff',seed:rand(0,Math.PI*2)});
   encounter.ambientTimer=rand(18,34);
  }
  for(let i=matrixBursts.length-1;i>=0;i--){const b=matrixBursts[i];b.r+=(b.maxR-b.r)*.12*f;b.life-=.012*f;if(b.life<=0)matrixBursts.splice(i,1)}
 
  if(encounter.phase==='glitch'){
   encounter.timer-=f;
-  // La pala puja suaument cap a la part superior durant la intro.
   if(paddle){
    paddle.y += ((90) - paddle.y) * Math.min(1,.12*f);
   }
   if(encounter.timer<=0)spawnDroneWave();
-  // Efectes visuals mentre dura el glitch.
   for(let i=0;i<MAX_PARTICLES;i++){
    const p=particlePool[i];if(!p.active)continue;
    p.x+=p.vx*f;p.y+=p.vy*f;p.vx*=.97;p.vy=p.vy*.97+.03*f;p.life-=f;
@@ -859,7 +928,6 @@ function updateDroneEncounter(f){
  }
 
  // ====== FASE ACTIVA DE DRONS ======
- // La pala es manté fixada a la part superior.
  if(paddle){
   paddle.y += ((90) - paddle.y) * Math.min(1,.18*f);
  }
@@ -871,7 +939,10 @@ function updateDroneEncounter(f){
  paddle.x=Math.max(12,Math.min(W-paddle.w-12,paddle.x));
  if(paddle.cooldown>0)paddle.cooldown-=f;
 
- // ===== Drons: moviment ràpid a la zona inferior, trets cap amunt =====
+ // Límits per evitar acumulació excessiva
+ if(enemyStars.length>25) enemyStars.splice(0, enemyStars.length-25);
+ if(lasers.length>40) lasers.splice(0, lasers.length-40);
+
  for(const d of drones){
   if(!d.alive)continue;
 
@@ -905,7 +976,6 @@ function updateDroneEncounter(f){
   d.phase+=.09*f;
   d.bank=Math.max(-.35,Math.min(.35,d.vx*.045));
 
-  // Dispar des de dalt del dron, cap amunt (la pala és a dalt).
   d.fireTimer-=f;
 
   if(d.fireTimer<=0){
@@ -929,7 +999,7 @@ function updateDroneEncounter(f){
       });
     }
 
-    addParticles(sx,sy,'#ff39d4',7,4);
+    addParticles(sx,sy,'#ff39d4',4,3);
     beep(320,.045,'square',.012);
   }
  }
@@ -941,14 +1011,14 @@ function updateDroneEncounter(f){
    if(!d.alive)continue;
    if(l.x>=d.x-d.w/2&&l.x<=d.x+d.w/2&&l.y>=d.y-d.h/2&&l.y<=d.y+d.h/2){
     d.hp--;hit=true;
-    addParticles(l.x,l.y,d.hp<=0?'#ffb347':'#42f5ff',d.hp<=0?34:14,d.hp<=0?9:5);
+    addParticles(l.x,l.y,d.hp<=0?'#ffb347':'#42f5ff',d.hp<=0?20:6,d.hp<=0?9:4);
     if(d.hp<=0){
       d.alive=false;
 
       addShockwave(d.x,d.y,'#ff39d4',150);
       addShockwave(d.x,d.y,'#42f5ff',100);
-      addParticles(d.x,d.y,'#ff39d4',45,10);
-      addParticles(d.x,d.y,'#42f5ff',28,8);
+      addParticles(d.x,d.y,'#ff39d4',20,9);
+      addParticles(d.x,d.y,'#42f5ff',12,7);
 
       shake=Math.min(34,shake+12);
       noiseBurst(.14,.05);
@@ -957,7 +1027,6 @@ function updateDroneEncounter(f){
       score+=250*encounter.cycle;
       syncHud();
 
-      // Només de tant en tant deixa un projectil hostil (cap amunt).
       if(Math.random()<.28){
         enemyStars.push({
           x:d.x,
@@ -976,14 +1045,12 @@ function updateDroneEncounter(f){
     break;
    }
   }
-  // Els làsers ara viatgen cap avall: moren en sortir per baix.
   if(hit||l.y>H+20)lasers.splice(i,1);
  }
 
- // Estrelles hostils: pugen cap a la pala (que és a dalt) amb lleu correcció.
+ // Estrelles hostils: pugen cap a la pala
  for(let i=enemyStars.length-1;i>=0;i--){
   const s=enemyStars[i];
-
   const targetX=paddle.x+paddle.w/2;
   s.vx+=Math.sign(targetX-s.x)*.008*f;
   s.vx=Math.max(-2.4,Math.min(2.4,s.vx));
@@ -1006,13 +1073,11 @@ function updateDroneEncounter(f){
     continue;
   }
 
-  // Moren en sortir per dalt, pels costats o per vida.
   if(s.y<-30||s.life<=0||s.x<-40||s.x>W+40){
     enemyStars.splice(i,1);
   }
  }
 
- // Final de la fase: restaurar pala avall, tornar a construir maons.
  if(drones.length&&drones.every(d=>!d.alive)){
   unlockedPaddleSkin=(encounter.cycle-1)%4;
   if(paddle)paddle.skin=unlockedPaddleSkin;
@@ -1029,7 +1094,6 @@ function updateDroneEncounter(f){
   beep(880,.16,'triangle',.05);
  }
 
- // Efectes visuals comuns.
  for(let i=0;i<MAX_PARTICLES;i++){
   const p=particlePool[i];if(!p.active)continue;
   p.x+=p.vx*f;p.y+=p.vy*f;p.vx*=.97;p.vy=p.vy*.97+.03*f;p.life-=f;
@@ -1365,89 +1429,106 @@ function drawDroneEncounter(){
   ctx.fillText('SYSTEM FAILURE',W/2,H*.46);
   ctx.font='bold 15px monospace';ctx.fillStyle='#42f5ff';ctx.shadowColor='#42f5ff';
   ctx.fillText('CYBER DEFENSE PROTOCOL // '+String(encounter.cycle).padStart(2,'0'),W/2,H*.46+38);
-  // Dibuixem la pala mentre puja perquè el jugador vegi el moviment.
   if(paddle)drawPaddleShape();
   ctx.restore();ctx.globalAlpha=1;
   return;
  }
- matrixBursts.forEach(b=>{ctx.save();ctx.globalAlpha=Math.max(0,b.life)*.32;ctx.strokeStyle=b.color;ctx.shadowColor=b.color;ctx.shadowBlur=22;ctx.lineWidth=2;ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,Math.PI*2);ctx.stroke();ctx.globalAlpha=Math.max(0,b.life)*.18;for(let k=0;k<8;k++){const a=b.seed+k*Math.PI/4;ctx.beginPath();ctx.moveTo(b.x+Math.cos(a)*b.r*.55,b.y+Math.sin(a)*b.r*.55);ctx.lineTo(b.x+Math.cos(a)*b.r*1.22,b.y+Math.sin(a)*b.r*1.22);ctx.stroke()}ctx.restore()});
+
+ // Esclats de codi de fons (sense shadowBlur per rendiment)
+ matrixBursts.forEach(b=>{
+  ctx.save();
+  ctx.globalAlpha=Math.max(0,b.life)*.3;
+  ctx.strokeStyle=b.color;
+  ctx.lineWidth=2;
+  ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,Math.PI*2);ctx.stroke();
+  ctx.globalAlpha=Math.max(0,b.life)*.15;
+  for(let k=0;k<6;k++){
+   const a=b.seed+k*Math.PI/3;
+   ctx.beginPath();
+   ctx.moveTo(b.x+Math.cos(a)*b.r*.55,b.y+Math.sin(a)*b.r*.55);
+   ctx.lineTo(b.x+Math.cos(a)*b.r*1.15,b.y+Math.sin(a)*b.r*1.15);
+   ctx.stroke();
+  }
+  ctx.restore();
+ });
  const pulse=.025+.025*(.5+.5*Math.sin(performance.now()*.004));ctx.fillStyle=`rgba(0,255,130,${pulse})`;ctx.fillRect(0,0,W,H);
  ctx.save();ctx.strokeStyle='#42f5ff';ctx.shadowColor='#42f5ff';ctx.shadowBlur=16;ctx.lineWidth=2;
  ctx.strokeRect(14,18,W-28,H-36);ctx.restore();
- drones.forEach(d=>{
-  if(!d.alive)return;
-  ctx.save();ctx.translate(d.x,d.y);ctx.rotate(d.bank||0);
-  const pulse=.78+.22*Math.sin(performance.now()*.012+d.phase);
-  const cell=d.w/20;
-  const rows=[
-   [7,12],[5,14],[4,15],[3,16],[2,17],[2,17],[1,18],[1,18],
-   [0,19],[0,19],[1,18],[1,18],[2,17],[3,16],[4,15],[5,14],[6,13],[7,12]
-  ];
-  ctx.imageSmoothingEnabled=false;
-  ctx.shadowColor='#55ffb0';ctx.shadowBlur=18;
-  rows.forEach((range,yy)=>{
-   for(let xx=range[0];xx<=range[1];xx++){
-    const edge=xx===range[0]||xx===range[1]||yy===0||yy===17;
-    ctx.fillStyle=edge?'#07120f':(yy<5?'#86b9a8':'#568f7d');
-    ctx.fillRect((xx-10)*cell,(yy-9)*cell,cell+0.35,cell+0.35);
+
+ // ===== DRONS: 1 drawImage per dron (sprite pre-renderitzat) =====
+ let droneSprite = null;
+ if (drones.length) {
+   const first = drones.find(d => d.alive);
+   if (first) droneSprite = buildDroneSprite(first.w, first.h);
+ }
+ drones.forEach(d => {
+   if (!d.alive) return;
+   ctx.save();
+   ctx.translate(d.x, d.y);
+   if (Math.abs(d.bank) > 0.02) ctx.rotate(d.bank);
+   if (droneSprite) {
+     ctx.drawImage(droneSprite, -droneSprite.width / 2, -droneSprite.height / 2);
    }
-  });
-  const spikes=[
-   [-10,-3],[-11,-2],[-10,2],[-11,3],[9,-3],[10,-2],[9,2],[10,3],
-   [-7,-7],[-6,-8],[-2,-9],[-1,-10],[1,-10],[2,-9],[6,-8],[7,-7],
-   [-7,7],[-6,8],[-2,9],[-1,10],[1,10],[2,9],[6,8],[7,7]
-  ];
-  spikes.forEach(([x,y],i)=>{
-   ctx.fillStyle='#07120f';ctx.fillRect((x-.5)*cell,(y-.5)*cell,cell*1.45,cell*1.45);
-   ctx.fillStyle=i%2?'#568f7d':'#86b9a8';ctx.fillRect((x-.25)*cell,(y-.25)*cell,cell*.9,cell*.9);
-  });
-  ctx.shadowBlur=0;
-  ctx.fillStyle='#10251e';
-  ctx.fillRect(-7*cell,-2*cell,5*cell,3*cell);
-  ctx.fillRect(2*cell,-2*cell,5*cell,3*cell);
-  ctx.fillStyle='#f4fff8';
-  ctx.fillRect(-6*cell,-1.5*cell,3.5*cell,1.5*cell);
-  ctx.fillRect(2.5*cell,-1.5*cell,3.5*cell,1.5*cell);
-  ctx.fillStyle='#07120f';
-  ctx.fillRect(-5*cell,-1.5*cell,1.2*cell,1.5*cell);
-  ctx.fillRect(3.5*cell,-1.5*cell,1.2*cell,1.5*cell);
-  ctx.fillRect(-4*cell,3*cell,8*cell,cell);
-  ctx.fillRect(-4*cell,4*cell,cell,cell);
-  ctx.fillRect(3*cell,4*cell,cell,cell);
-  ctx.fillStyle='#f4fff8';
-  ctx.fillRect(-2.5*cell,3.2*cell,5*cell,.8*cell);
-  ctx.globalAlpha=pulse;ctx.fillStyle='#baffd9';
-  ctx.fillRect(-5*cell,-6*cell,2*cell,cell);
-  ctx.fillRect(3*cell,-5*cell,2*cell,cell);
-  ctx.globalAlpha=1;
-  ctx.shadowColor='#ff39d4';ctx.shadowBlur=10;
-  ctx.fillStyle='#251326';ctx.fillRect(-d.w*.46,-d.h*.62,d.w*.92,6);
-  ctx.fillStyle='#ff39d4';ctx.fillRect(-d.w*.46,-d.h*.62,d.w*.92*(d.hp/d.maxHp),6);
-  ctx.restore();
+   // Barra de vida plana (2 fillRect)
+   const hpFrac = Math.max(0, d.hp / d.maxHp);
+   const barW = d.w * 0.92;
+   const barX = -barW / 2;
+   const barY = -d.h * 0.62;
+   ctx.fillStyle = 'rgba(37,19,38,0.9)';
+   ctx.fillRect(barX, barY, barW, 5);
+   ctx.fillStyle = '#ff39d4';
+   ctx.fillRect(barX, barY, barW * hpFrac, 5);
+   // Brillo pulsant (1 arc sense blur)
+   const glow = 0.25 + 0.35 * (0.5 + 0.5 * Math.sin(performance.now() * 0.012 + d.phase));
+   ctx.globalAlpha = glow;
+   ctx.strokeStyle = '#55ffb0';
+   ctx.lineWidth = 2;
+   ctx.beginPath();
+   ctx.arc(0, 0, d.w * 0.52, 0, Math.PI * 2);
+   ctx.stroke();
+   ctx.restore();
  });
+
  if(paddle){drawPaddleShape()}
  lasers.forEach(l=>{
   ctx.save();ctx.shadowColor='#42f5ff';ctx.shadowBlur=16;ctx.fillStyle='#fff';ctx.fillRect(l.x-2,l.y,4,19);
   ctx.fillStyle='#42f5ff';ctx.fillRect(l.x-4,l.y+4,8,15);ctx.restore();
  });
- enemyStars.forEach(s=>{
-  ctx.save();ctx.translate(s.x,s.y);ctx.rotate(s.rot);
-  ctx.shadowColor='#ff1738';ctx.shadowBlur=25;
-  const spikes=10,outer=s.r,inner=s.r*.48;
-  ctx.beginPath();
-  for(let i=0;i<spikes*2;i++){
-   const a=-Math.PI/2+i*Math.PI/spikes,r=i%2===0?outer:inner;
-   const x=Math.cos(a)*r,y=Math.sin(a)*r;
-   if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
-  }
-  ctx.closePath();ctx.fillStyle='#d90028';ctx.fill();ctx.strokeStyle='#ff687d';ctx.lineWidth=2;ctx.stroke();
-  ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(0,0,3.2,0,Math.PI*2);ctx.fill();
-  ctx.restore();
+
+ // ===== ESTRELLES: sense shadowBlur =====
+ enemyStars.forEach(s => {
+   ctx.save();
+   ctx.translate(s.x, s.y);
+   ctx.rotate(s.rot);
+   // Halo barat
+   ctx.globalAlpha = 0.35;
+   ctx.fillStyle = '#ff1738';
+   ctx.beginPath(); ctx.arc(0, 0, s.r * 1.35, 0, Math.PI * 2); ctx.fill();
+   ctx.globalAlpha = 1;
+   // Estrella (path únic)
+   const spikes = 8, outer = s.r, inner = s.r * 0.5;
+   ctx.beginPath();
+   for (let i = 0; i < spikes * 2; i++) {
+     const a = -Math.PI / 2 + i * Math.PI / spikes;
+     const r = i % 2 === 0 ? outer : inner;
+     const x = Math.cos(a) * r, y = Math.sin(a) * r;
+     if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+   }
+   ctx.closePath();
+   ctx.fillStyle = '#d90028';
+   ctx.fill();
+   ctx.strokeStyle = '#ff687d';
+   ctx.lineWidth = 2;
+   ctx.stroke();
+   // Nucli blanc
+   ctx.fillStyle = '#fff';
+   ctx.beginPath(); ctx.arc(0, 0, s.r * 0.3, 0, Math.PI * 2); ctx.fill();
+   ctx.restore();
  });
+
  if(encounter.invuln>0&&Math.floor(encounter.invuln/6)%2===0){ctx.save();ctx.globalAlpha=.55;ctx.strokeStyle='#ff243f';ctx.lineWidth=4;ctx.shadowColor='#ff243f';ctx.shadowBlur=20;ctx.strokeRect(paddle.x-5,paddle.y-7,paddle.w+10,paddle.h+14);ctx.restore()}
  const alive=drones.filter(d=>d.alive).length;
  ctx.save();ctx.textAlign='center';ctx.font='bold 20px monospace';ctx.fillStyle='#fff';ctx.shadowColor='#ff39d4';ctx.shadowBlur=16;
- // El text informatiu el movem cap avall perquè la pala ara és a dalt.
  ctx.fillText('ELIMINA ELS DRONS',W/2,H*.40);
  ctx.font='bold 13px monospace';ctx.fillStyle='#42f5ff';ctx.shadowColor='#42f5ff';
  ctx.fillText('OBJECTIUS RESTANTS: '+alive+'   //   SECTOR '+encounter.cycle,W/2,H*.40+24);
